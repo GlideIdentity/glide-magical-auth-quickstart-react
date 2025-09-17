@@ -16,4 +16,10 @@ dist-ssr
 .gradle
 build
 .idea
-.vscode 
+.vscode
+
+# Go binaries and build outputs
+server
+server-*
+*.exe
+vendor/ 

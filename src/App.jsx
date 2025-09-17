@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   usePhoneAuth, 
   PhoneAuthErrorCode, 
@@ -14,6 +14,11 @@ function App() {
   const [phoneError, setPhoneError] = useState('');
   const [resultFlow, setResultFlow] = useState(null); // Track which flow generated the result
   
+  // Read debug configuration from environment variables
+  // In development, set VITE_GLIDE_DEBUG=true in your .env file
+  const debugEnabled = import.meta.env.VITE_GLIDE_DEBUG === 'true' || 
+                      (import.meta.env.DEV && window.location.search.includes('debug=true'));
+  
   // URL Configuration:
   // Option 1: Local server routes (requires running the local Express server with your own Glide credentials)
   const prepareRequest = '/api/phone-auth/prepare';
@@ -23,7 +28,7 @@ function App() {
   // const prepareRequest = 'https://checkout-demo-server.glideidentity.dev/generate-get-request';
   // const processResponse = 'https://checkout-demo-server.glideidentity.dev/processCredential';
 
-  // Initialize phone auth directly like in Vue example
+  // Initialize phone auth with debug logging from environment
   const {
     getPhoneNumber,
     verifyPhoneNumber,
@@ -37,13 +42,28 @@ function App() {
       prepare: prepareRequest,
       process: processResponse
     },
-    debug: true
+    debug: debugEnabled,
+    // Also support explicit log level from env
+    logLevel: import.meta.env.VITE_GLIDE_LOG_LEVEL
   });
+
+  // Log debug status on mount
+  useEffect(() => {
+    if (debugEnabled) {
+      console.log('🔍 Debug logging is enabled via environment variables');
+      console.log('📊 Set VITE_GLIDE_DEBUG=false in .env to disable');
+    }
+  }, [debugEnabled]);
   
   const handleGetNumber = async () => {
     try {
-      // When calling getPhoneNumber without parameters, the server will use default T-Mobile PLMN
+      // Pass default T-Mobile PLMN for GetPhoneNumber
+      // The Web SDK requires either phoneNumber or PLMN to be provided
       const result = await getPhoneNumber({
+        plmn: {
+          mcc: '310',
+          mnc: '260'  // T-Mobile USA
+        },
         consentData: {
           consentText: 'I consent to the terms and conditions',
           policyLink: 'https://www.example.com/privacy',
@@ -156,6 +176,34 @@ function App() {
         </div>
         <h1>Magical Auth Quick Start</h1>
         <p>Test carrier-grade phone verification in minutes. No SMS, no delays, no fraud.</p>
+        
+        {/* Debug Status Indicator (controlled by environment) */}
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          background: debugEnabled ? '#e8f5e9' : '#f5f5f5',
+          padding: '8px 16px',
+          borderRadius: '20px',
+          transition: 'all 0.3s ease'
+        }} title={debugEnabled ? 'Debug logging enabled via VITE_GLIDE_DEBUG=true' : 'Set VITE_GLIDE_DEBUG=true in .env to enable'}>
+          <span style={{ fontSize: '20px' }}>{debugEnabled ? '🔍' : '🔇'}</span>
+          <span style={{ 
+            fontSize: '14px', 
+            fontWeight: '500',
+            color: debugEnabled ? '#2e7d32' : '#666'
+          }}>
+            Debug: {debugEnabled ? 'ON' : 'OFF'}
+          </span>
+          {import.meta.env.DEV && (
+            <span style={{ fontSize: '11px', opacity: 0.7 }}>
+              (env)
+            </span>
+          )}
+        </div>
       </header>
 
       <div className="container">
@@ -348,16 +396,14 @@ function App() {
             <span className="message-icon">✓</span>
             <div className="message-content">
               <h4>Success</h4>
-              <p><strong>Phone Number:</strong> {result.phoneNumber || result.phone_number}</p>
-              <p><strong>Verified:</strong> {selectedFlow === 'verify' ? (result.verified ? 'Yes' : 'No') : 'Yes'}</p>
-              {result.session && (
+              <p><strong>Phone Number:</strong> {result.phone_number}</p>
+              {result.verified !== undefined && (
+                <p><strong>Verified:</strong> {result.verified ? 'Yes' : 'No'}</p>
+              )}
+              {result.sessionInfo && (
                 <div className="session-info">
-                  <p><strong>Session Details:</strong></p>
-                  <pre className="session-data">
-                    {typeof result.session === 'object' 
-                      ? JSON.stringify(result.session, null, 2) 
-                      : result.session}
-                  </pre>
+                  <p><strong>Session Key:</strong></p>
+                  <pre className="session-data">{result.sessionInfo.session_key}</pre>
                 </div>
               )}
             </div>

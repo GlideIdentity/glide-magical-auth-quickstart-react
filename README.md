@@ -9,6 +9,7 @@ This is a minimal example demonstrating secure phone authentication using:
 1. Node.js 16+ installed
 2. Glide API credentials (get them from [Glide Documentation](https://docs.glideapi.com/))
 3. For Java server option: Java 21+
+4. For Go server option: Go 1.21+
 
 ## Setup
 
@@ -23,10 +24,20 @@ For development with your own Glide credentials:
 
 2. **Configure environment variables:**
    
-   Create a `.env` file in the project root:
+   Copy the example file and configure:
+   ```bash
+   cp env.example .env
+   ```
+   
+   Then edit `.env` with your credentials:
    ```env
-   GLIDE_CLIENT_ID=your_client_id_here
-   GLIDE_CLIENT_SECRET=your_client_secret_here
+   # API Configuration
+   GLIDE_API_KEY=your_api_key_here
+   GLIDE_API_BASE_URL=https://api.glideidentity.app
+   
+   # Debug Logging (optional, for development)
+   GLIDE_DEBUG=false                    # Set to true for backend debug logs
+   VITE_GLIDE_DEBUG=false              # Set to true for frontend debug logs
    ```
 
 3. **Start the development server:**
@@ -34,6 +45,8 @@ For development with your own Glide credentials:
    npm run dev      # TypeScript server (default)
    # or
    npm run dev:java # Java server
+   # or
+   npm run dev:go   # Go server
    ```
 
    This will start:
@@ -69,7 +82,7 @@ For immediate testing without backend setup:
 
 ## Server Options
 
-You can choose between TypeScript or Java backend:
+You can choose between TypeScript, Java, or Go backend:
 
 ### Option A: TypeScript Server (Default)
 
@@ -109,6 +122,68 @@ npm run dev:java
 - `npm run server:java:build` - Build the Java server
 - `npm run server:java:clean` - Clean Java build files
 
+### Option C: Go Server
+
+**Prerequisites:**
+- Go 1.21 or higher
+
+**Build and run:**
+```bash
+# Download dependencies (first time only)
+npm run server:go:deps
+
+# Start with Go backend
+npm run dev:go
+
+# Or build a standalone binary
+npm run server:go:build
+```
+
+**Features:**
+- High-performance native compilation
+- Uses `glide-go-sdk` with typed constants and error handling
+- Minimal memory footprint
+- Built-in concurrency support
+- Fast startup time
+
+### Go Server Commands
+
+- `npm run dev:go` - Start both Go server and React client
+- `npm run server:go` - Start only the Go server
+- `npm run server:go:build` - Build standalone Go binary (outputs to `dist/server-go`)
+- `npm run server:go:deps` - Download Go dependencies
+
+## Debug Logging
+
+This quickstart includes enterprise-grade debug logging for development:
+
+### Enable Debug Mode
+
+Set these in your `.env` file:
+```env
+# Backend debug logging
+GLIDE_DEBUG=true
+GLIDE_LOG_LEVEL=debug
+
+# Frontend debug logging (Vite requires VITE_ prefix)
+VITE_GLIDE_DEBUG=true
+VITE_GLIDE_LOG_LEVEL=debug
+```
+
+### What You'll See
+
+- 📡 API request/response details
+- ⏱️ Performance metrics and timing
+- 🔁 Retry attempts and backoff
+- 🔒 Automatic sanitization of sensitive data
+- 📊 Detailed error context
+
+The debug indicator in the top-right corner shows the current status.
+
+**Note:** Debug logging should be disabled in production for security and performance.
+
+For more details, see [DEBUG_QUICKSTART.md](./DEBUG_QUICKSTART.md).
+
 ## Usage
 
 The app demonstrates two main features:
@@ -144,21 +219,28 @@ The progress bar provides:
 
 ## Choosing a Backend Server
 
-### TypeScript vs Java Server
+### TypeScript vs Java vs Go Server
 
-Both servers provide identical functionality. Choose based on your team's expertise:
+All three servers provide identical functionality. Choose based on your team's expertise:
 
 **TypeScript Server:**
 - ✅ Same language as frontend
-- ✅ Faster startup time
 - ✅ Simpler deployment
 - ✅ Better for Node.js teams
+- ✅ Hot reload development
 
 **Java Server:**
 - ✅ Enterprise-grade Spring Boot
 - ✅ Better for Java teams
 - ✅ More mature ecosystem
 - ✅ Better IDE support
+
+**Go Server:**
+- ✅ Fastest performance
+- ✅ Minimal memory usage
+- ✅ Native binary compilation
+- ✅ Better for Go teams
+- ✅ Built-in concurrency
 
 ## Server Configuration
 
@@ -218,6 +300,16 @@ The SDK now includes improved error handling with:
    - Gradle build system for dependency management
    - Identical API interface - frontend works with both servers
    - Thread-safe with optimal performance for concurrent requests
+
+#### Go Server:
+1. **Backend** (already provided):
+   - Complete Go implementation with standard library HTTP server
+   - Uses `glide-go-sdk` with typed constants and comprehensive error handling
+   - High-performance native binary with minimal dependencies
+   - Same three endpoints as other server versions
+   - Go modules for dependency management
+   - Built-in concurrency with goroutines
+   - Minimal memory footprint and fast startup
 
 ### With External Server:
 1. **Backend**:

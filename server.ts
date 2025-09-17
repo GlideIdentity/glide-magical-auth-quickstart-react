@@ -11,14 +11,9 @@ dotenv.config();
 
 interface PhoneAuthProcessRequest {
   response: any; // The credential response object from the client
-  session: string;
+  sessionInfo: any;  // Required: Full SessionInfo object from prepare response
   phoneNumber?: string;
-}
-
-interface AuthPrepareResponse {
-  protocol: string;
-  data: any;
-  session?: string;
+  options?: any;  // Optional options for session metadata
 }
 
 interface AuthProcessResponse {
@@ -33,8 +28,8 @@ interface HealthCheckResponse {
   glideInitialized: boolean;
   glideProperties: string[];
   env: {
-    hasClientId: boolean;
-    hasClientSecret: boolean;
+    hasApiKey: boolean;
+    apiBaseUrl: string;
   };
 }
 
@@ -45,17 +40,20 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Initialize Glide client
+// Initialize Glide client with API key
 const glide = new GlideClient({
-  clientId: process.env.GLIDE_CLIENT_ID!,
-  clientSecret: process.env.GLIDE_CLIENT_SECRET!,
+  apiKey: process.env.GLIDE_API_KEY!,
+  internal: {
+    apiBaseUrl: process.env.GLIDE_API_BASE_URL || 'https://api.glideidentity.app',
+    authBaseUrl: process.env.GLIDE_AUTH_BASE_URL || 'https://oidc.gateway-x.io'
+  },
 });
 
 // Phone Auth Request endpoint
 app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, res: Response) => {
   try {
     console.log('/api/phone-auth/prepare', req.body);
-    const { use_case, phone_number, plmn, consent_data } = req.body;
+    const { use_case, phone_number, plmn, consent_data, client_info } = req.body;
 
     // Pre-process the request parameters
     const prepareParams: any = {
@@ -74,12 +72,12 @@ app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, 
       prepareParams.plmn = plmn;
     }
 
-    // If neither phone_number nor PLMN was provided, use default T-Mobile PLMN
-    if (!phone_number && (!plmn || !plmn.mcc || !plmn.mnc)) {
-      console.log('No phone_number or PLMN provided, using default T-Mobile PLMN');
+    // For GetPhoneNumber use case, if neither phone_number nor PLMN was provided, use default T-Mobile PLMN
+    if (use_case === 'GetPhoneNumber' && !phone_number && (!plmn || !plmn.mcc || !plmn.mnc)) {
+      console.log('No phone_number or PLMN provided for GetPhoneNumber, using default T-Mobile PLMN');
       prepareParams.plmn = {
         mcc: '310',
-        mnc: '160'  // T-Mobile USA
+        mnc: '260'  // T-Mobile USA
       };
     }
 
@@ -92,15 +90,20 @@ app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, 
       };
     }
 
+    // Add client_info if provided (for browser/platform detection)
+    if (client_info) {
+      console.log('Including client_info:', client_info);
+      prepareParams.client_info = client_info;
+    }
+
     console.log('Calling glide.magicAuth.prepare with:', prepareParams);
     const response = await glide.magicAuth.prepare(prepareParams);
-    console.log('Response:', response);
+    console.log('Response from SDK:', response);
     
-    // Check if response already has the expected format
-    if (response.protocol && response.data) {
-      // New format - response is already properly formatted
-      console.log('Using direct format from Glide SDK');
-      res.json(response as AuthPrepareResponse);
+    // The Node SDK now returns the response in the correct format
+    if (response.authentication_strategy && response.data && response.session) {
+      console.log('Forwarding response from SDK:', response);
+      res.json(response);
     } else {
       throw new Error('Unexpected response format from Glide SDK');
     }
@@ -114,15 +117,22 @@ app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, 
         message: error.message,
         status: error.status,
         requestId: error.requestId,
+        traceId: error.traceId,
+        spanId: error.spanId,
         details: error.details
       });
       
-      // Return the structured error to frontend
-      res.status(error.status).json({
+      // Return the structured error to frontend with proper status
+      const httpStatus = error.status || 500;
+      res.status(httpStatus).json({
         error: error.code,
         message: error.message,
         requestId: error.requestId,
-        details: error.details
+        timestamp: error.timestamp,
+        traceId: error.traceId,
+        spanId: error.spanId,
+        details: error.details,
+        status: error.status // Include status in response for client to use
       });
       return;
     }
@@ -141,27 +151,38 @@ app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, 
 app.post('/api/phone-auth/process', async (req: Request<{}, {}, PhoneAuthProcessRequest>, res: Response) => {
   try {
     console.log('/api/phone-auth/process', req.body);
-    const { response, session, phoneNumber } = req.body;
-    const processParams: any = {
-      credentialResponse: response,
-      session: session,
-      phoneNumber: phoneNumber,
-    };
-    console.log('Calling glide.magicAuth.processCredential with:', processParams);    
-    const result = await glide.magicAuth.processCredential(processParams) as AuthProcessResponse;
-
-    console.log('Response:', result);
-    // Return the result directly if it already has the expected format
-    if (result.phone_number || result.phoneNumber) {
-      res.json(result);
+    const { response, sessionInfo, phoneNumber } = req.body;
+    
+    // Use the required SessionInfo
+    const sessionToUse = sessionInfo;
+    
+    // Determine which method to call based on whether phoneNumber is provided
+    let result: any;
+    
+    if (phoneNumber) {
+      // Use verifyPhoneNumber when a phone number is provided
+      const verifyParams = {
+        sessionInfo: sessionInfo,
+        credential: response,
+        ...(req.body.options && { options: req.body.options })
+      };
+      console.log('Calling glide.magicAuth.verifyPhoneNumber with sessionInfo:', verifyParams.sessionInfo);
+      result = await glide.magicAuth.verifyPhoneNumber(verifyParams);
+      console.log('VerifyPhoneNumber Response:', result);
     } else {
-      // Fallback for unexpected format
-      res.json({
-        phone_number: result.phoneNumber || result.phone_number,
-        verified: result.verified !== undefined ? result.verified : true,
-        ...result
-      });
+      // Use getPhoneNumber when no phone number is provided
+      const getParams = {
+        sessionInfo: sessionInfo,
+        credential: response,
+        ...(req.body.options && { options: req.body.options })
+      };
+      console.log('Calling glide.magicAuth.getPhoneNumber with sessionInfo:', getParams.sessionInfo);
+      result = await glide.magicAuth.getPhoneNumber(getParams);
+      console.log('GetPhoneNumber Response:', result);
     }
+
+    // Return the result as-is from the SDK
+    res.json(result);
   } catch (error) {
     console.log('Caught error:', error);
     
@@ -172,15 +193,22 @@ app.post('/api/phone-auth/process', async (req: Request<{}, {}, PhoneAuthProcess
         message: error.message,
         status: error.status,
         requestId: error.requestId,
+        traceId: error.traceId,
+        spanId: error.spanId,
         details: error.details
       });
       
-      // Return the structured error to frontend
-      res.status(error.status).json({
+      // Return the structured error to frontend with proper status
+      const httpStatus = error.status || 500;
+      res.status(httpStatus).json({
         error: error.code,
         message: error.message,
         requestId: error.requestId,
-        details: error.details
+        timestamp: error.timestamp,
+        traceId: error.traceId,
+        spanId: error.spanId,
+        details: error.details,
+        status: error.status // Include status in response for client to use
       });
       return;
     }
@@ -202,15 +230,16 @@ app.get('/api/health', (_req: Request, res: Response<HealthCheckResponse>) => {
     glideInitialized: !!glide,
     glideProperties: glide ? Object.keys(glide) : [],
     env: {
-      hasClientId: !!process.env.GLIDE_CLIENT_ID,
-      hasClientSecret: !!process.env.GLIDE_CLIENT_SECRET
+      hasApiKey: !!process.env.GLIDE_API_KEY,
+      apiBaseUrl: process.env.GLIDE_API_BASE_URL || 'https://api.glideidentity.app'
     }
   });
 });
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  if (!process.env.GLIDE_CLIENT_ID || !process.env.GLIDE_CLIENT_SECRET) {
-    console.warn('⚠️  Missing Glide credentials. Please check your .env file.');
+  console.log(`Using Glide API: ${process.env.GLIDE_API_BASE_URL || 'https://api.glideidentity.app'}`);
+  if (!process.env.GLIDE_API_KEY) {
+    console.warn('⚠️  Missing Glide API key. Please check your .env file.');
   }
 }); 
