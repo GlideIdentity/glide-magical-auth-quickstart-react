@@ -24,8 +24,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "glide-sdk": "5.0.0-beta.0",
-    "glide-web-client-sdk": "4.0.0-beta.1",
+    "glide-sdk": "5.0.0-beta.1",
+    "glide-web-client-sdk": "^4.0.0-beta.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

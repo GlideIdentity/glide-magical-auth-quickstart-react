@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  usePhoneAuth, 
+  usePhoneAuth,
   PhoneAuthErrorCode, 
   isPhoneAuthError, 
   isUserError, 
@@ -36,15 +36,21 @@ function App() {
     error,
     result,
     currentStep,
-    isSupported
+    isSupported,
+    retryLastRequest
   } = usePhoneAuth({
     endpoints: {
       prepare: prepareRequest,
       process: processResponse
     },
     debug: debugEnabled,
-    // Also support explicit log level from env
-    logLevel: import.meta.env.VITE_GLIDE_LOG_LEVEL
+    // Optional callbacks for monitoring
+    onCrossDeviceDetected: debugEnabled ? () => {
+      console.log('🔍 Cross-device flow detected (QR code shown)');
+    } : undefined,
+    onRetryAttempt: debugEnabled ? (attempt, max) => {
+      console.log(`🔄 Retry attempt ${attempt}/${max}`);
+    } : undefined
   });
 
   // Log debug status on mount
@@ -300,6 +306,27 @@ function App() {
               </button>
             )}
           </div>
+
+          {/* Retry button for errors */}
+          {error && !isLoading && (
+            <div style={{ marginTop: '10px' }}>
+              <button 
+                onClick={() => {
+                  retryLastRequest().catch(console.error);
+                }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#ff9800',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Retry Request
+              </button>
+            </div>
+          )}
 
           {/* Progress Bar */}
           {isLoading && (
