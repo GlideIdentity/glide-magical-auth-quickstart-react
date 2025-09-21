@@ -1,348 +1,318 @@
-# Secure Phone Authentication - React Quick Start
+# Glide Phone Authentication Quick Start - React
 
-This is a minimal example demonstrating secure phone authentication using:
-- `glide-sdk` for the backend
-- `glide-web-client-sdk/react` for the frontend
+## 🎯 Purpose
 
-## Prerequisites
+This quick start demonstrates **carrier-grade phone authentication** without SMS/OTP using Glide's Digital Credentials API. It shows how to:
+- **Verify phone numbers** instantly through carrier networks
+- **Retrieve phone numbers** securely from the device's SIM
+- **Handle cross-device flows** (QR code scenarios) with proper timeouts
+- **Implement silent retries** for better user experience
 
-1. Node.js 16+ installed
-2. Glide API credentials (get them from [Glide Documentation](https://docs.glideapi.com/))
-3. For Java server option: Java 21+
-4. For Go server option: Go 1.21+
+**Key Innovation**: Uses carrier verification instead of SMS - more secure, instant, and fraud-resistant.
 
-## Setup
+## 📦 SDK Versions
 
-### Quick Start (Local Server - Default)
+This quickstart uses:
+- **Backend**: `glide-sdk@5.0.0-beta.1` (Node.js) or equivalent Java/Go SDKs
+- **Frontend**: `glide-web-client-sdk@^4.0.0-beta.2` (React)
 
-For development with your own Glide credentials:
+## 🚀 Quick Start (5 minutes)
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+### Prerequisites
+- **Node.js 16+** installed
+- **Chrome/Edge 128+** with Digital Credentials API support
+- **Glide API Key** from [Glide Dashboard](https://docs.glideapi.com/)
 
-2. **Configure environment variables:**
-   
-   Copy the example file and configure:
-   ```bash
-   cp env.example .env
-   ```
-   
-   Then edit `.env` with your credentials:
-   ```env
-   # API Configuration
-   GLIDE_API_KEY=your_api_key_here
-   GLIDE_API_BASE_URL=https://api.glideidentity.app
-   
-   # Debug Logging (optional, for development)
-   GLIDE_DEBUG=false                    # Set to true for backend debug logs
-   VITE_GLIDE_DEBUG=false              # Set to true for frontend debug logs
-   ```
+### Step 1: Clone & Install
 
-3. **Start the development server:**
-   ```bash
-   npm run dev      # TypeScript server (default)
-   # or
-   npm run dev:java # Java server
-   # or
-   npm run dev:go   # Go server
-   ```
-
-   This will start:
-   - Backend server on http://localhost:3001
-   - React app on http://localhost:3000
-
-### Quick Testing (External Server)
-
-For immediate testing without backend setup:
-
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-2. **Update client configuration:**
-   
-   In `src/App.jsx`, comment out the local server URLs and uncomment the external ones:
-   ```javascript
-   // const prepareRequest = '/api/phone-auth/prepare';
-   // const processResponse = '/api/phone-auth/process';
-   
-   const prepareRequest = 'https://checkout-demo-server.glideidentity.dev/generate-get-request';
-   const processResponse = 'https://checkout-demo-server.glideidentity.dev/processCredential';
-   ```
-
-3. **Start the React app:**
-   ```bash
-   npm run client
-   ```
-
-   This uses a pre-configured external server with hosted Glide credentials for quick testing.
-
-## Server Options
-
-You can choose between TypeScript, Java, or Go backend:
-
-### Option A: TypeScript Server (Default)
-
-The TypeScript server is the default option and starts automatically with `npm run dev`.
-
-**Features:**
-- Complete TypeScript implementation with proper type definitions
-- Uses `glide-sdk` npm package
-- Express.js server with CORS support
-- Same language as frontend
-
-### Option B: Java Server (Spring Boot)
-
-**Prerequisites:**
-- Java 21 or higher
-- Gradle (will use wrapper scripts if not installed globally)
-
-**Build and run:**
 ```bash
-# Build the Java server
-npm run server:java:build
-
-# Start with Java backend
-npm run dev:java
+git clone https://github.com/GlideIdentity/magical-auth-quickstart-react.git
+cd magical-auth-quickstart-react
+npm install
 ```
 
-**Features:**
-- Spring Boot framework with auto-configuration
-- Uses `glide-sdk-java` with automatic session management (ThreadLocal strategy)
-- Enterprise-grade architecture
-- Thread-safe with optimal performance
+### Step 2: Configure Environment
 
-### Java Server Commands
-
-- `npm run dev:java` - Start both Java server and React client
-- `npm run server:java` - Start only the Java server
-- `npm run server:java:build` - Build the Java server
-- `npm run server:java:clean` - Clean Java build files
-
-### Option C: Go Server
-
-**Prerequisites:**
-- Go 1.21 or higher
-
-**Build and run:**
 ```bash
-# Download dependencies (first time only)
-npm run server:go:deps
-
-# Start with Go backend
-npm run dev:go
-
-# Or build a standalone binary
-npm run server:go:build
+cp env.example .env
 ```
 
-**Features:**
-- High-performance native compilation
-- Uses `glide-go-sdk` with typed constants and error handling
-- Minimal memory footprint
-- Built-in concurrency support
-- Fast startup time
-
-### Go Server Commands
-
-- `npm run dev:go` - Start both Go server and React client
-- `npm run server:go` - Start only the Go server
-- `npm run server:go:build` - Build standalone Go binary (outputs to `dist/server-go`)
-- `npm run server:go:deps` - Download Go dependencies
-
-## Debug Logging
-
-This quickstart includes enterprise-grade debug logging for development:
-
-### Enable Debug Mode
-
-Set these in your `.env` file:
+Edit `.env` with your credentials:
 ```env
-# Backend debug logging
-GLIDE_DEBUG=true
-GLIDE_LOG_LEVEL=debug
+# REQUIRED - Get from Glide Dashboard
+GLIDE_API_KEY=your_api_key_here
+GLIDE_API_BASE_URL=https://api.glideidentity.app/magic-auth
 
-# Frontend debug logging (Vite requires VITE_ prefix)
-VITE_GLIDE_DEBUG=true
-VITE_GLIDE_LOG_LEVEL=debug
+# OPTIONAL - Debug logging
+GLIDE_DEBUG=false              # Backend debug logs
+VITE_GLIDE_DEBUG=false        # Frontend debug logs
 ```
 
-### What You'll See
+### Step 3: Run the App
 
-- 📡 API request/response details
-- ⏱️ Performance metrics and timing
-- 🔁 Retry attempts and backoff
-- 🔒 Automatic sanitization of sensitive data
+```bash
+npm run dev
+```
+
+This starts:
+- **Backend API**: http://localhost:3001
+- **React App**: http://localhost:3000
+
+### Step 4: Test It
+
+1. Open http://localhost:3000
+2. Click **"Get My Phone Number"** to retrieve your device's number
+3. Or enter a number and click **"Verify Phone Number"** to verify ownership
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│                 │────▶│                  │────▶│                 │
+│   React App     │     │  Backend Server  │     │   Glide API     │
+│                 │◀────│   (Your API)     │◀────│                 │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+        │                                                  │
+        │                                                  │
+        └─────────────── Digital Credentials ──────────────┘
+                         (Browser ↔ Carrier)
+```
+
+## 📱 What This Demonstrates
+
+### 1. **Get Phone Number Flow**
+```javascript
+// Frontend calls backend
+POST /api/phone-auth/prepare
+{
+  "use_case": "GetPhoneNumber",
+  "plmn": { "mcc": "310", "mnc": "260" }  // T-Mobile USA
+}
+
+// Backend returns authentication request
+{
+  "authentication_strategy": "ts43",
+  "session": { /* session data */ },
+  "data": { /* credential request */ }
+}
+
+// Frontend invokes browser's Digital Credentials API
+// User approves on device/carrier
+// Frontend sends credential to backend
+
+POST /api/phone-auth/process
+{
+  "response": { /* credential */ },
+  "sessionInfo": { /* session */ }
+}
+
+// Backend returns verified phone number
+{
+  "phone_number": "+1234567890"
+}
+```
+
+### 2. **Verify Phone Number Flow**
+Same as above but with:
+- `use_case: "VerifyPhoneNumber"`
+- `phone_number: "+1234567890"` in prepare request
+- Response includes `verified: true/false`
+
+## 🔥 Key Features (New in Beta.2)
+
+### Cross-Device Support (QR Code Flows)
+- **Automatic detection** when QR code is shown
+- **Extended timeout** from 30s → 120s for cross-device
+- **Smart retry logic** for desktop/phone sync issues
+
+### Silent Retry Pattern
+- **Automatic retries** on network failures (invisible to user)
+- **Manual retry button** on persistent errors
+- **Session caching** to recover from interruptions
+
+### Debug Mode
+Set `VITE_GLIDE_DEBUG=true` to see:
+- 🔍 Cross-device flow detection
+- 🔄 Retry attempts
+- ⏱️ Timing information
 - 📊 Detailed error context
 
-The debug indicator in the top-right corner shows the current status.
+## 🛠️ Backend Options
 
-**Note:** Debug logging should be disabled in production for security and performance.
-
-For more details, see [DEBUG_QUICKSTART.md](./DEBUG_QUICKSTART.md).
-
-## Usage
-
-The app demonstrates two main features:
-
-### 1. Get Phone Number
-Click "Get My Phone Number" to retrieve the phone number associated with your device.
-
-### 2. Verify Phone Number
-Enter a phone number and click "Verify Phone Number" to verify ownership.
-
-## UI Features
-
-### Visual Progress Tracking
-
-The app includes a visual progress bar that shows the authentication flow in real-time:
-
-1. **Preparing Request** - Initial request setup
-2. **Carrier Approval** - Waiting for carrier authentication
-3. **Processing** - Final verification processing
-
-The progress bar provides:
-- ✅ Step-by-step visual feedback
-- ✅ Active, completed, and error states
-- ✅ Clear indication of current authentication phase
-- ✅ Error handling at each step
-
-### Phone Number Validation
-
-- Real-time E.164 format validation
-- Clear error messages for invalid formats
-- Supports international phone numbers
-- Format hint: `+[country code][phone number]`
-
-## Choosing a Backend Server
-
-### TypeScript vs Java vs Go Server
-
-All three servers provide identical functionality. Choose based on your team's expertise:
-
-**TypeScript Server:**
-- ✅ Same language as frontend
-- ✅ Simpler deployment
-- ✅ Better for Node.js teams
-- ✅ Hot reload development
-
-**Java Server:**
-- ✅ Enterprise-grade Spring Boot
-- ✅ Better for Java teams
-- ✅ More mature ecosystem
-- ✅ Better IDE support
-
-**Go Server:**
-- ✅ Fastest performance
-- ✅ Minimal memory usage
-- ✅ Native binary compilation
-- ✅ Better for Go teams
-- ✅ Built-in concurrency
-
-## Server Configuration
-
-The app supports multiple server configurations:
-
-### Option 1: Local Server (Default)
-```javascript
-const prepareRequest = '/api/phone-auth/prepare';
-const processResponse = '/api/phone-auth/process';
+### Option A: TypeScript (Default)
+```bash
+npm run dev  # Uses server.ts with glide-sdk
 ```
-- **Pros**: Your own credentials, full control, production-ready
-- **Cons**: Requires backend setup and .env configuration
 
-### Option 2: External Server
+### Option B: Java (Spring Boot)
+```bash
+npm run dev:java  # Uses Spring Boot with glide-sdk-java
+```
+
+### Option C: Go
+```bash
+npm run dev:go  # Uses server.go with glide-go-sdk
+```
+
+All backends provide identical `/api/phone-auth/*` endpoints.
+
+## 🧪 Testing Without Backend Setup
+
+For quick testing, use the hosted demo server:
+
+In `src/App.jsx`, change:
 ```javascript
+// Comment out local endpoints
+// const prepareRequest = '/api/phone-auth/prepare';
+// const processResponse = '/api/phone-auth/process';
+
+// Use demo endpoints
 const prepareRequest = 'https://checkout-demo-server.glideidentity.dev/generate-get-request';
 const processResponse = 'https://checkout-demo-server.glideidentity.dev/processCredential';
 ```
-- **Pros**: No backend setup required, instant testing
-- **Cons**: Uses shared demo credentials, not for production
 
-## New: Comprehensive Error Handling
+Then run:
+```bash
+npm run client  # Frontend only
+```
 
-The SDK now includes improved error handling with:
-- **Structured error codes** - Consistent error identification across all platforms
-- **User-friendly messages** - Clear explanations for end users
-- **Request tracking** - Request IDs for debugging
-- **Detailed error information** - Additional context for specific errors
+## 📊 Understanding the Flow
 
-### Error Types:
-- `CARRIER_NOT_ELIGIBLE` - Carrier doesn't support this feature
-- `USER_CANCELLED` - User cancelled the authentication
-- `BROWSER_NOT_SUPPORTED` - Browser doesn't support Digital Credentials API
-- And more structured error codes for different scenarios
+### Phase 1: Prepare (Backend → Glide)
+1. Frontend requests authentication
+2. Backend calls Glide's `/prepare` endpoint
+3. Glide returns credential request based on carrier
 
-## How It Works
+### Phase 2: Authenticate (Browser ↔ Carrier)
+1. Frontend invokes Digital Credentials API
+2. Browser communicates with carrier
+3. User approves on device
+4. Browser receives signed credential
 
-### With Local Server:
+### Phase 3: Process (Backend → Glide)
+1. Frontend sends credential to backend
+2. Backend validates with Glide
+3. Glide returns verified phone data
 
-#### TypeScript Server (`server.ts`):
-1. **Backend** (already provided):
-   - Complete TypeScript implementation with proper type definitions
-   - Uses `glide-sdk` npm package to communicate with Glide's API
-   - Express.js server with CORS support
-   - Exposes three endpoints:
-      - `POST /api/phone-auth/prepare` - Creates a verification request
-      - `POST /api/phone-auth/process` - Processes the verification response
-      - `GET /api/health` - Health check with credentials validation
-   - Automatically handles response format compatibility and eligibility checks
+## 🐛 Troubleshooting
 
-#### Java Server (Spring Boot):
-1. **Backend** (already provided):
-   - Complete Java implementation using Spring Boot framework
-   - Uses `glide-sdk-java` with automatic session management (ThreadLocal strategy)
-   - Modern Java 21 with Lombok for cleaner code
-   - Same three endpoints as TypeScript version
-   - Gradle build system for dependency management
-   - Identical API interface - frontend works with both servers
-   - Thread-safe with optimal performance for concurrent requests
+### "Browser not supported"
+- Use Chrome/Edge 128+
+- Enable flag: `chrome://flags/#web-identity-digital-credentials`
 
-#### Go Server:
-1. **Backend** (already provided):
-   - Complete Go implementation with standard library HTTP server
-   - Uses `glide-go-sdk` with typed constants and comprehensive error handling
-   - High-performance native binary with minimal dependencies
-   - Same three endpoints as other server versions
-   - Go modules for dependency management
-   - Built-in concurrency with goroutines
-   - Minimal memory footprint and fast startup
+### "USER_DENIED" after completing on phone
+- This is a known browser behavior
+- The SDK includes automatic retry logic
+- Click "Retry Request" button if shown
 
-### With External Server:
-1. **Backend**:
-   - Pre-configured Glide SDK integration with demo credentials
-   - Hosted endpoints handle all authentication logic
-   - Same response format as local servers
+### "CARRIER_NOT_ELIGIBLE"
+- Carrier doesn't support Digital Credentials
+- Currently supported: T-Mobile, Verizon (iOS)
+- AT&T coming soon
 
-### Frontend (`src/App.jsx`):
-- Uses `glide-web-client-sdk/react` with direct `usePhoneAuth` hook import
-- Handles the Digital Credentials API browser flow automatically
-- Shows loading states with visual progress tracking
-- Supports both "Get Phone Number" and "Verify Phone Number" flows
-- Real-time phone number validation with E.164 format
-- Comprehensive error handling with user-friendly messages
+### Debug Tips
+1. Set `VITE_GLIDE_DEBUG=true` in `.env`
+2. Check browser console for detailed logs
+3. Look for "Cross-device flow detected" messages
+4. Note request IDs for support
 
-The integration is designed to be seamless - both server options return properly formatted responses that the Web Client SDK can use directly.
+## 🚢 Production Checklist
 
-## Browser Support
+Before deploying to production:
 
-The Digital Credentials API is currently experimental and requires:
-- Chrome/Edge 128+ on Android
-- Experimental features may need to be enabled
+- [ ] Use environment variables for API keys
+- [ ] Implement proper authentication on your backend
+- [ ] Add rate limiting to prevent abuse
+- [ ] Enable CORS only for your domains
+- [ ] Disable debug logging (`GLIDE_DEBUG=false`)
+- [ ] Handle all error codes gracefully
+- [ ] Add monitoring and analytics
+- [ ] Test on multiple devices/carriers
+- [ ] Review security best practices
 
-## Next Steps
+## 📚 API Reference
 
-- Add error handling for production use
-- Implement proper authentication
-- Add rate limiting
-- Style the UI to match your brand
-- Deploy to production
+### Backend Endpoints
 
-## Troubleshooting
+#### `POST /api/phone-auth/prepare`
+Prepares authentication request
+```typescript
+Request: {
+  use_case: "GetPhoneNumber" | "VerifyPhoneNumber",
+  phone_number?: string,  // For VerifyPhoneNumber
+  plmn?: { mcc: string, mnc: string }  // For GetPhoneNumber
+}
 
-- **"Browser not supported"**: Use a compatible browser with Digital Credentials API support
-- **API errors**: Check your Glide credentials in the `.env` file
-- **Network errors**: Ensure both servers are running (`npm run dev`) 
+Response: {
+  authentication_strategy: "ts43" | "link",
+  session: SessionInfo,
+  data: CredentialRequest
+}
+```
+
+#### `POST /api/phone-auth/process`
+Processes credential from browser
+```typescript
+Request: {
+  response: CredentialResponse,
+  sessionInfo: SessionInfo,
+  useCase: string
+}
+
+Response: {
+  phone_number: string,
+  verified?: boolean  // For VerifyPhoneNumber
+}
+```
+
+### Frontend Hook
+
+```javascript
+import { usePhoneAuth } from 'glide-web-client-sdk/react';
+
+const {
+  getPhoneNumber,      // Function to get phone
+  verifyPhoneNumber,   // Function to verify
+  retryLastRequest,    // Manual retry (new)
+  isLoading,          // Loading state
+  error,              // Error object
+  result,             // Success result
+  currentStep,        // Current flow step
+  isSupported         // Browser support
+} = usePhoneAuth({
+  endpoints: {
+    prepare: '/api/phone-auth/prepare',
+    process: '/api/phone-auth/process'
+  },
+  onCrossDeviceDetected: () => {
+    console.log('QR code shown');
+  },
+  onRetryAttempt: (attempt, max) => {
+    console.log(`Retry ${attempt}/${max}`);
+  }
+});
+```
+
+## 🔗 Resources
+
+- **Glide Documentation**: [docs.glideapi.com](https://docs.glideapi.com/)
+- **API Reference**: [api.glideidentity.app/docs](https://api.glideidentity.app/docs)
+- **Support**: support@glideidentity.com
+- **SDK Source**: [github.com/GlideIdentity](https://github.com/GlideIdentity)
+
+## 📄 License
+
+MIT - See LICENSE file
+
+---
+
+**For AI Agents**: This is a complete implementation of carrier-based phone authentication. The key files are:
+- `server.ts` (or `.java`/`.go`) - Backend API implementation
+- `src/App.jsx` - Frontend React component
+- `.env` - Configuration (needs API key)
+
+To implement in another project:
+1. Copy the backend endpoint logic (`/api/phone-auth/*`)
+2. Install SDKs: `glide-sdk` (backend) and `glide-web-client-sdk` (frontend)
+3. Use the `usePhoneAuth` hook in React or `PhoneAuthClient` class in vanilla JS
+4. Handle the three phases: Prepare → Authenticate → Process
