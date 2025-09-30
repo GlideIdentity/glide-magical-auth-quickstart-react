@@ -78,7 +78,7 @@ body {
 .section-icon {
   width: 48px;
   height: 48px;
-  background: #007AFF;
+  border: 1px solid #e5e5e7;
   border-radius: 12px;
   display: flex;
   align-items: center;

@@ -1,28 +1,45 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { GlideClient, AuthV2PrepDto, MagicAuthError } from 'glide-sdk';
+import { 
+  GlideClient, 
+  MagicAuthError,
+  MagicAuthErrorCode,
+  MagicAuthPrepareRequest,
+  GetPhoneNumberRequest,
+  GetPhoneNumberResponse,
+  VerifyPhoneNumberRequest,
+  VerifyPhoneNumberResponse,
+  UseCaseType,
+  UseCase
+} from 'glide-sdk';
+
+// Define SessionInfo interface matching what frontend sends
+// This matches the API specification
+interface SessionInfo {
+  session_key: string;
+  nonce: string;
+  enc_key: string;
+}
 
 import dotenv from 'dotenv';
 
 // Load environment variables
 dotenv.config();
 
-// Type definitions
-
+// Type definition for phone auth process request from frontend
+// This represents the HTTP request body structure, not an SDK type
 interface PhoneAuthProcessRequest {
-  response: any; // The credential response object from the client
-  sessionInfo: any;  // Required: Full SessionInfo object from prepare response
-  phoneNumber?: string;
-  options?: any;  // Optional options for session metadata
+  // Required fields (snake_case as per API spec)
+  credential: string;  // Credential string from frontend
+  session: SessionInfo;  // Session from prepare response
+  
+  // Optional fields
+  phone_number?: string; // For verify use case
+  use_case?: UseCaseType;
 }
 
-interface AuthProcessResponse {
-  phone_number?: string;
-  phoneNumber?: string;
-  verified?: boolean;
-  [key: string]: any;
-}
-
+// Health check endpoint response type
+// This is a custom endpoint, not an SDK type
 interface HealthCheckResponse {
   status: string;
   glideInitialized: boolean;
@@ -43,20 +60,17 @@ app.use(express.json());
 // Initialize Glide client with API key
 const glide = new GlideClient({
   apiKey: process.env.GLIDE_API_KEY!,
-  internal: {
-    apiBaseUrl: process.env.GLIDE_API_BASE_URL || 'https://api.glideidentity.app',
-    authBaseUrl: process.env.GLIDE_AUTH_BASE_URL || 'https://oidc.gateway-x.io'
-  },
 });
 
 // Phone Auth Request endpoint
-app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, res: Response) => {
+// For error responses, we return a custom error format
+app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, MagicAuthPrepareRequest>, res: Response) => {
   try {
     console.log('/api/phone-auth/prepare', req.body);
     const { use_case, phone_number, plmn, consent_data, client_info } = req.body;
 
     // Pre-process the request parameters
-    const prepareParams: any = {
+    const prepareParams: MagicAuthPrepareRequest = {
       use_case
     };
 
@@ -73,7 +87,7 @@ app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, 
     }
 
     // For GetPhoneNumber use case, if neither phone_number nor PLMN was provided, use default T-Mobile PLMN
-    if (use_case === 'GetPhoneNumber' && !phone_number && (!plmn || !plmn.mcc || !plmn.mnc)) {
+    if (use_case === UseCase.GET_PHONE_NUMBER && !phone_number && (!plmn || !plmn.mcc || !plmn.mnc)) {
       console.log('No phone_number or PLMN provided for GetPhoneNumber, using default T-Mobile PLMN');
       prepareParams.plmn = {
         mcc: '310',
@@ -125,7 +139,7 @@ app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, 
       // Return the structured error to frontend with proper status
       const httpStatus = error.status || 500;
       res.status(httpStatus).json({
-        error: error.code,
+        code: error.code,
         message: error.message,
         requestId: error.requestId,
         timestamp: error.timestamp,
@@ -137,11 +151,24 @@ app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, 
       return;
     }
     
-    // Handle other errors
+    // Handle other errors - use 422 for business logic errors, 500 for true server errors
     console.error('Phone auth request error:', (error as Error).message);
-    res.status(500).json({ 
-      error: 'UNEXPECTED_ERROR',
+    // Check if it's a network/system error that should be 500
+    const isServerError = error instanceof Error && (
+      error.message.toLowerCase().includes('network') || 
+      error.message.toLowerCase().includes('timeout') ||
+      error.message.toLowerCase().includes('econnrefused') ||
+      error.message.toLowerCase().includes('enotfound') ||
+      error.name === 'TypeError' || // Often indicates system-level issues
+      error.name === 'ReferenceError' // Programming errors
+    );
+    const statusCode = isServerError ? 500 : 422;
+    
+    res.status(statusCode).json({ 
+      code: isServerError ? MagicAuthErrorCode.INTERNAL_SERVER_ERROR : MagicAuthErrorCode.UNPROCESSABLE_ENTITY,
       message: (error as Error).message,
+      status: statusCode,
+      timestamp: new Date().toISOString(),
       details: process.env.NODE_ENV === 'development' ? (error as Error).stack : undefined
     });
   }
@@ -150,33 +177,66 @@ app.post('/api/phone-auth/prepare', async (req: Request<{}, {}, AuthV2PrepDto>, 
 // Phone Auth Process endpoint
 app.post('/api/phone-auth/process', async (req: Request<{}, {}, PhoneAuthProcessRequest>, res: Response) => {
   try {
-    console.log('/api/phone-auth/process', req.body);
-    const { response, sessionInfo, phoneNumber } = req.body;
+    console.log('/api/phone-auth/process - Full request body:', JSON.stringify(req.body, null, 2));
+    console.log('Request headers:', req.headers);
     
-    // Use the required SessionInfo
-    const sessionToUse = sessionInfo;
+    // Extract fields from request (API spec uses snake_case)
+    const { credential, session, phone_number } = req.body;
+    
+    console.log('Extracted fields:', {
+      hasCredential: !!credential,
+      credentialLength: credential?.length,
+      hasSession: !!session,
+      sessionKeys: session ? Object.keys(session) : [],
+      hasPhoneNumber: !!phone_number
+    });
+    
+    // Validate required fields
+    if (!credential) {
+      res.status(400).json({
+        code: MagicAuthErrorCode.MISSING_PARAMETERS,
+        message: 'Missing required field: credential',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    if (!session) {
+      res.status(400).json({
+        code: MagicAuthErrorCode.MISSING_PARAMETERS,
+        message: 'Missing required field: session',
+        status: 400,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
     
     // Determine which method to call based on whether phoneNumber is provided
-    let result: any;
+    let result: GetPhoneNumberResponse | VerifyPhoneNumberResponse;
     
-    if (phoneNumber) {
-      // Use verifyPhoneNumber when a phone number is provided
-      const verifyParams = {
-        sessionInfo: sessionInfo,
-        credential: response,
-        ...(req.body.options && { options: req.body.options })
+    if (phone_number) {
+      // Use verifyPhoneNumber when a phone number is provided  
+      // Rebuild credential structure for Node SDK
+      const verifyParams: VerifyPhoneNumberRequest = {
+        sessionInfo: session,
+        credential: {
+          vp_token: { glide: credential }  // SDK expects this format
+        }
       };
-      console.log('Calling glide.magicAuth.verifyPhoneNumber with sessionInfo:', verifyParams.sessionInfo);
+      console.log('Calling glide.magicAuth.verifyPhoneNumber with session:', verifyParams.sessionInfo);
       result = await glide.magicAuth.verifyPhoneNumber(verifyParams);
       console.log('VerifyPhoneNumber Response:', result);
     } else {
       // Use getPhoneNumber when no phone number is provided
-      const getParams = {
-        sessionInfo: sessionInfo,
-        credential: response,
-        ...(req.body.options && { options: req.body.options })
+      // Rebuild credential structure for Node SDK
+      const getParams: GetPhoneNumberRequest = {
+        sessionInfo: session,
+        credential: {
+          vp_token: { glide: credential }  // SDK expects this format
+        }
       };
-      console.log('Calling glide.magicAuth.getPhoneNumber with sessionInfo:', getParams.sessionInfo);
+      console.log('Calling glide.magicAuth.getPhoneNumber with session:', getParams.sessionInfo);
       result = await glide.magicAuth.getPhoneNumber(getParams);
       console.log('GetPhoneNumber Response:', result);
     }
@@ -201,7 +261,7 @@ app.post('/api/phone-auth/process', async (req: Request<{}, {}, PhoneAuthProcess
       // Return the structured error to frontend with proper status
       const httpStatus = error.status || 500;
       res.status(httpStatus).json({
-        error: error.code,
+        code: error.code,
         message: error.message,
         requestId: error.requestId,
         timestamp: error.timestamp,
@@ -213,11 +273,24 @@ app.post('/api/phone-auth/process', async (req: Request<{}, {}, PhoneAuthProcess
       return;
     }
     
-    // Handle other errors
+    // Handle other errors - use 422 for business logic errors, 500 for true server errors
     console.error('Phone auth process error:', (error as Error).message);
-    res.status(500).json({ 
-      error: 'UNEXPECTED_ERROR',
+    // Check if it's a network/system error that should be 500
+    const isServerError = error instanceof Error && (
+      error.message.toLowerCase().includes('network') || 
+      error.message.toLowerCase().includes('timeout') ||
+      error.message.toLowerCase().includes('econnrefused') ||
+      error.message.toLowerCase().includes('enotfound') ||
+      error.name === 'TypeError' || // Often indicates system-level issues
+      error.name === 'ReferenceError' // Programming errors
+    );
+    const statusCode = isServerError ? 500 : 422;
+    
+    res.status(statusCode).json({ 
+      code: isServerError ? MagicAuthErrorCode.INTERNAL_SERVER_ERROR : MagicAuthErrorCode.UNPROCESSABLE_ENTITY,
       message: (error as Error).message,
+      status: statusCode,
+      timestamp: new Date().toISOString(),
       details: process.env.NODE_ENV === 'development' ? (error as Error).stack : undefined
     });
   }

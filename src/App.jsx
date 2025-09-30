@@ -1,180 +1,239 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  usePhoneAuth,
-  PhoneAuthErrorCode, 
-  isPhoneAuthError, 
-  isUserError, 
-  getUserMessage 
-} from 'glide-web-client-sdk/react';
+import React, { useState, useEffect, useRef } from 'react';
+import { PhoneAuthClient, UseCase } from 'glide-web-client-sdk';
 import glideLogo from './assets/Glide-Logomark.svg';
+import './App.css';
 
 function App() {
-  const [phoneInput, setPhoneInput] = useState('');
+  // State management
+  const [flowMode, setFlowMode] = useState('highlevel'); // 'highlevel' | 'granular'
   const [selectedFlow, setSelectedFlow] = useState('verify');
-  const [phoneError, setPhoneError] = useState('');
-  const [resultFlow, setResultFlow] = useState(null); // Track which flow generated the result
+  const [phoneInput, setPhoneInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugLogs, setDebugLogs] = useState([]);
   
-  // Read debug configuration from environment variables
-  // In development, set VITE_GLIDE_DEBUG=true in your .env file
-  const debugEnabled = import.meta.env.VITE_GLIDE_DEBUG === 'true' || 
-                      (import.meta.env.DEV && window.location.search.includes('debug=true'));
+  // Granular flow state
+  const [currentStep, setCurrentStep] = useState(0);
+  const [stepOneResp, setStepOneResp] = useState(null);
+  const [stepTwoResp, setStepTwoResp] = useState(null);
+  const [stepThreeResp, setStepThreeResp] = useState(null);
+  const [stepOneError, setStepOneError] = useState(null);
+  const [stepTwoError, setStepTwoError] = useState(null);
+  const [stepThreeError, setStepThreeError] = useState(null);
   
-  // URL Configuration:
-  // Option 1: Local server routes (requires running the local Express server with your own Glide credentials)
-  const prepareRequest = '/api/phone-auth/prepare';
-  const processResponse = '/api/phone-auth/process';
-
-  // Option 2: Pre-made external server (for quick testing with hosted credentials)
-  // const prepareRequest = 'https://checkout-demo-server.glideidentity.dev/generate-get-request';
-  // const processResponse = 'https://checkout-demo-server.glideidentity.dev/processCredential';
-
-  // Initialize phone auth with debug logging from environment
-  const {
-    getPhoneNumber,
-    verifyPhoneNumber,
-    isLoading,
-    error,
-    result,
-    currentStep,
-    isSupported,
-    retryLastRequest
-  } = usePhoneAuth({
-    endpoints: {
-      prepare: prepareRequest,
-      process: processResponse
-    },
-    debug: debugEnabled,
-    // Optional callbacks for monitoring
-    onCrossDeviceDetected: debugEnabled ? () => {
-      console.log('🔍 Cross-device flow detected (QR code shown)');
-    } : undefined,
-    onRetryAttempt: debugEnabled ? (attempt, max) => {
-      console.log(`🔄 Retry attempt ${attempt}/${max}`);
-    } : undefined
-  });
-
-  // Log debug status on mount
+  // PhoneAuthClient instance
+  const authClientRef = useRef(null);
+  
+  // Initialize client on mount
   useEffect(() => {
-    if (debugEnabled) {
-      console.log('🔍 Debug logging is enabled via environment variables');
-      console.log('📊 Set VITE_GLIDE_DEBUG=false in .env to disable');
-    }
-  }, [debugEnabled]);
+    authClientRef.current = new PhoneAuthClient({
+      endpoints: {
+        prepare: '/api/phone-auth/prepare',
+        process: '/api/phone-auth/process'
+      },
+      debug: true, // Enable SDK debug logging to console
+      timeout: 30000,
+      onCrossDeviceDetected: () => {
+        addDebugLog('info', 'Cross-device authentication detected (QR code shown)');
+      },
+      onRetryAttempt: (attempt, maxAttempts) => {
+        addDebugLog('info', `Retry attempt ${attempt} of ${maxAttempts}`);
+      }
+    });
+    addDebugLog('info', 'PhoneAuthClient initialized with debug mode', { endpoints: '/api/phone-auth/*' });
+  }, []);
   
-  const handleGetNumber = async () => {
-    try {
-      // Pass default T-Mobile PLMN for GetPhoneNumber
-      // The Web SDK requires either phoneNumber or PLMN to be provided
-      const result = await getPhoneNumber({
-        plmn: {
-          mcc: '310',
-          mnc: '260'  // T-Mobile USA
-        },
-        consentData: {
-          consentText: 'I consent to the terms and conditions',
-          policyLink: 'https://www.example.com/privacy',
-          policyText: 'Privacy policy'
-        }
-      });
-      console.log('Phone number retrieved:', result);
-      setResultFlow('get'); // Mark that this result came from 'get' flow
-    } catch (error) {
-      console.error('Failed to get phone number:', error);
-      setResultFlow('get'); // Mark even for errors
+  // Debug logging helper
+  const addDebugLog = (type, message, data) => {
+    if (debugMode) {
+      setDebugLogs(prev => [...prev, {
+        timestamp: new Date().toLocaleTimeString(),
+        type,
+        message,
+        data
+      }]);
     }
   };
-
-  const handleVerifyNumber = async () => {
-    const validationError = validatePhoneNumber(phoneInput);
-    
-    if (validationError) {
-      setPhoneError(validationError);
+  
+  // Flow selection handler
+  const selectFlow = (flow) => {
+    setSelectedFlow(flow);
+    setPhoneInput('');
+    setError(null);
+    setResult(null);
+    resetGranularFlow();
+    addDebugLog('info', `Flow type changed to: ${flow}`);
+  };
+  
+  // High-level authentication
+  const startAuthentication = async () => {
+    const authClient = authClientRef.current;
+    if (!authClient) {
+      setError({ code: 'NO_CLIENT', message: 'Authentication client not initialized' });
       return;
     }
     
+    if (selectedFlow === 'verify' && !phoneInput) {
+      setError({ code: 'MISSING_PHONE', message: 'Please enter a phone number to verify' });
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    
     try {
-      const result = await verifyPhoneNumber(phoneInput);
-      console.log('Verification result:', result);
-      setResultFlow('verify'); // Mark that this result came from 'verify' flow
-    } catch (error) {
-      console.error('Failed to verify phone number:', error);
-      setResultFlow('verify'); // Mark even for errors
+      addDebugLog('info', 'Starting authentication', { 
+        flow: selectedFlow,
+        phone: selectedFlow === 'verify' ? phoneInput : undefined 
+      });
+      
+      const options = {
+        use_case: selectedFlow === 'get' ? UseCase.GET_PHONE_NUMBER : UseCase.VERIFY_PHONE_NUMBER,
+        phone_number: selectedFlow === 'verify' ? phoneInput : undefined,
+        plmn: selectedFlow === 'get' ? { mcc: '310', mnc: '260' } : undefined, // T-Mobile USA for GetPhoneNumber
+        consent_data: {
+          consent_text: 'I agree to verify my phone number',
+          policy_link: 'https://example.com/privacy',
+          policy_text: 'Privacy Policy'
+        }
+      };
+      
+      const response = selectedFlow === 'get' 
+        ? await authClient.getPhoneNumberComplete(options)
+        : await authClient.verifyPhoneNumberComplete(phoneInput, options);
+      
+      setResult(response);
+      addDebugLog('success', 'Authentication successful', response);
+    } catch (err) {
+      setError({ 
+        code: err.code || 'UNKNOWN_ERROR',
+        message: err.message || 'An unexpected error occurred'
+      });
+      addDebugLog('error', 'Authentication failed', err);
+    } finally {
+      setLoading(false);
     }
   };
-
-  const getLoadingText = () => {
-    if (currentStep === 'requesting') return 'Preparing request...';
-    if (currentStep === 'authenticating') return 'Waiting for carrier approval...';
-    if (currentStep === 'processing') return 'Processing response...';
-    return 'Loading...';
+  
+  // Granular flow functions
+  const startGranularFlow = () => {
+    setCurrentStep(1);
+    resetGranularFlow();
   };
-
-  const validatePhoneNumber = (phone) => {
-    // Remove all non-digit characters except +
-    const cleaned = phone.replace(/[^\d+]/g, '');
-    
-    // E.164 format: + followed by up to 15 digits total
-    const e164Regex = /^\+[1-9]\d{1,14}$/;
-    
-    if (!phone.trim()) {
-      return 'Phone number is required';
+  
+  const executeStepOne = async () => {
+    const authClient = authClientRef.current;
+    if (!authClient) {
+      setStepOneError('Authentication client not initialized');
+      return;
     }
     
-    if (!cleaned.startsWith('+')) {
-      return 'Phone number must be in E.164 format (start with +)';
-    }
+    setLoading(true);
+    setStepOneError(null);
+    setCurrentStep(1);
     
-    if (cleaned.length < 8) {
-      return 'Phone number too short for E.164 format';
+    try {
+      addDebugLog('info', 'Step 1: Preparing authentication');
+      
+      const options = {
+        use_case: selectedFlow === 'get' ? UseCase.GET_PHONE_NUMBER : UseCase.VERIFY_PHONE_NUMBER,
+        phone_number: selectedFlow === 'verify' ? phoneInput : undefined,
+        plmn: selectedFlow === 'get' ? { mcc: '310', mnc: '260' } : undefined, // T-Mobile USA for GetPhoneNumber
+        consent_data: {
+          consent_text: 'I agree to verify my phone number',
+          policy_link: 'https://example.com/privacy',
+          policy_text: 'Privacy Policy'
+        }
+      };
+      
+      console.log('[Granular] Step 1: Preparing with options:', options);
+      const response = await authClient.preparePhoneRequest(options);
+      console.log('[Granular] Step 1: Prepare response:', response);
+      setStepOneResp(response);
+      setCurrentStep(2);
+      addDebugLog('success', 'Step 1 completed', response);
+    } catch (err) {
+      console.error('[Granular] Step 1: Error during prepare:', err);
+      setStepOneError(err.message || 'Failed to prepare authentication');
+      addDebugLog('error', 'Step 1 failed', err);
+    } finally {
+      setLoading(false);
     }
-    
-    if (cleaned.length > 16) {
-      return 'Phone number too long for E.164 format (max 15 digits)';
-    }
-    
-    if (!e164Regex.test(cleaned)) {
-      return 'Please enter a valid E.164 format phone number';
-    }
-    
-    return '';
   };
-
-  const handlePhoneChange = (e) => {
-    const value = e.target.value;
-    setPhoneInput(value);
+  
+  const executeStepTwo = async () => {
+    const authClient = authClientRef.current;
+    if (!authClient || !stepOneResp) return;
     
-    // Clear error when user starts typing
-    if (phoneError) {
-      setPhoneError('');
+    setLoading(true);
+    setStepTwoError(null);
+    setCurrentStep(2);
+    
+    try {
+      addDebugLog('info', 'Step 2: Invoking secure browser prompt');
+      console.log('[Granular] Step 2: About to invoke secure prompt with:', stepOneResp);
+      
+      const credential = await authClient.invokeSecurePrompt(stepOneResp);
+      console.log('[Granular] Step 2: Received credential:', credential);
+      setStepTwoResp(credential);
+      setCurrentStep(3);
+      addDebugLog('success', 'Step 2 completed', credential);
+    } catch (err) {
+      console.error('[Granular] Step 2: Error during secure prompt:', err);
+      setStepTwoError(err.message || 'Browser verification failed');
+      addDebugLog('error', 'Step 2 failed', err);
+    } finally {
+      setLoading(false);
     }
   };
-
-  if (!isSupported) {
-    return (
-      <>
-        <header className="header">
-          <div className="header-brand">
-            <img src={glideLogo} alt="Glide Identity" className="header-logo" />
-            <span className="header-company">Glide Identity</span>
-          </div>
-          <h1>Magical Auth Quick Start</h1>
-          <p>Test carrier-grade phone verification in minutes. No SMS, no delays, no fraud.</p>
-        </header>
-        <div className="container">
-          <div className="message message-error">
-            <span className="message-icon">⚠️</span>
-            <div className="message-content">
-              <h4>Browser Not Supported</h4>
-              <p>Your browser doesn't support secure phone authentication. Please use a compatible browser.</p>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  }
-
+  
+  const executeStepThree = async () => {
+    const authClient = authClientRef.current;
+    if (!authClient || !stepOneResp || !stepTwoResp) return;
+    
+    setLoading(true);
+    setStepThreeError(null);
+    setCurrentStep(3);
+    
+    try {
+      addDebugLog('info', 'Step 3: Processing verification');
+      console.log('[Granular] Step 3: Processing with credential:', stepTwoResp);
+      console.log('[Granular] Step 3: Using session:', stepOneResp.session);
+      
+      const response = selectedFlow === 'get'
+        ? await authClient.getPhoneNumber(stepTwoResp, stepOneResp.session)
+        : await authClient.verifyPhoneNumber(stepTwoResp, stepOneResp.session);
+      
+      console.log('[Granular] Step 3: Final response:', response);
+      setStepThreeResp(response);
+      setCurrentStep(0);
+      addDebugLog('success', 'Step 3 completed', response);
+    } catch (err) {
+      console.error('[Granular] Step 3: Error during processing:', err);
+      setStepThreeError(err.message || 'Verification processing failed');
+      addDebugLog('error', 'Step 3 failed', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const resetGranularFlow = () => {
+    setCurrentStep(0);
+    setStepOneResp(null);
+    setStepTwoResp(null);
+    setStepThreeResp(null);
+    setStepOneError(null);
+    setStepTwoError(null);
+    setStepThreeError(null);
+    addDebugLog('info', 'Granular flow reset');
+  };
+  
   return (
-    <>
+    <div>
+      {/* Header */}
       <header className="header">
         <div className="header-brand">
           <img src={glideLogo} alt="Glide Identity" className="header-logo" />
@@ -182,37 +241,35 @@ function App() {
         </div>
         <h1>Magical Auth Quick Start</h1>
         <p>Test carrier-grade phone verification in minutes. No SMS, no delays, no fraud.</p>
-        
-        {/* Debug Status Indicator (controlled by environment) */}
-        <div style={{
-          position: 'absolute',
-          top: '20px',
-          right: '20px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          background: debugEnabled ? '#e8f5e9' : '#f5f5f5',
-          padding: '8px 16px',
-          borderRadius: '20px',
-          transition: 'all 0.3s ease'
-        }} title={debugEnabled ? 'Debug logging enabled via VITE_GLIDE_DEBUG=true' : 'Set VITE_GLIDE_DEBUG=true in .env to enable'}>
-          <span style={{ fontSize: '20px' }}>{debugEnabled ? '🔍' : '🔇'}</span>
-          <span style={{ 
-            fontSize: '14px', 
-            fontWeight: '500',
-            color: debugEnabled ? '#2e7d32' : '#666'
-          }}>
-            Debug: {debugEnabled ? 'ON' : 'OFF'}
-          </span>
-          {import.meta.env.DEV && (
-            <span style={{ fontSize: '11px', opacity: 0.7 }}>
-              (env)
-            </span>
-          )}
-        </div>
       </header>
-
+      
       <div className="container">
+        {/* Flow Mode Toggle */}
+        <section className="section mode-toggle-section">
+          <div className="mode-toggle">
+            <button 
+              className={`mode-btn ${flowMode === 'highlevel' ? 'active' : ''}`}
+              onClick={() => setFlowMode('highlevel')}
+            >
+              <span className="mode-icon">⚡</span>
+              High Level
+            </button>
+            <button 
+              className={`mode-btn ${flowMode === 'granular' ? 'active' : ''}`}
+              onClick={() => setFlowMode('granular')}
+            >
+              <span className="mode-icon">🔧</span>
+              Granular
+            </button>
+          </div>
+          <p className="mode-description">
+            {flowMode === 'highlevel' 
+              ? 'Simple one-click authentication flow' 
+              : 'Step-by-step control over each authentication phase' 
+            }
+          </p>
+        </section>
+        
         {/* Flow Type Section */}
         <section className="section">
           <div className="section-header">
@@ -222,26 +279,20 @@ function App() {
               <p>Choose what you want to do with the phone verification</p>
             </div>
           </div>
-
+          
           <div className="card-grid two-columns">
             <div 
               className={`card ${selectedFlow === 'verify' ? 'selected' : ''}`}
-              onClick={() => {
-                setSelectedFlow('verify');
-                setPhoneError('');
-              }}
+              onClick={() => selectFlow('verify')}
             >
               <div className="card-icon">✓</div>
               <h3>Verify Phone Number</h3>
               <p>Verify if phone matches SIM card through carrier network</p>
             </div>
-
+            
             <div 
               className={`card ${selectedFlow === 'get' ? 'selected' : ''}`}
-              onClick={() => {
-                setSelectedFlow('get');
-                setPhoneError('');
-              }}
+              onClick={() => selectFlow('get')}
             >
               <div className="card-icon">📲</div>
               <h3>Get Phone Number</h3>
@@ -249,234 +300,253 @@ function App() {
             </div>
           </div>
         </section>
-
-        {/* Action Section */}
-        <section className="section">
-          <div className="section-header">
-            <div className="section-icon">⚡</div>
-            <div className="section-title">
-              <h2>{selectedFlow === 'get' ? 'Get Your Number' : 'Verify Number'}</h2>
-              <p>{selectedFlow === 'get' ? 
-                'Click below to retrieve your phone number securely' : 
-                'Enter a phone number in E.164 format to verify ownership'}</p>
-            </div>
-          </div>
-
-          {selectedFlow === 'verify' && (
-            <div className="form-group">
-              <div className="input-wrapper">
-                <input
-                  type="tel"
-                  placeholder="Enter phone number in E.164 format (e.g., +16287892016)"
-                  value={phoneInput}
-                  onChange={handlePhoneChange}
-                  disabled={isLoading}
-                  className={phoneError ? 'input-error' : ''}
-                />
-                {phoneError && (
-                  <div className="phone-error">
-                    {phoneError}
-                  </div>
-                )}
-                <div className="format-hint">
-                  E.164 format: +[country code][phone number] (no spaces or dashes)
-                </div>
+        
+        {/* Phone Input Section (only for verify flow) */}
+        {selectedFlow === 'verify' && (
+          <section className="section">
+            <div className="section-header">
+              <div className="section-icon">📞</div>
+              <div className="section-title">
+                <h2>Phone Number to Verify</h2>
+                <p>Enter the number you want to verify against the SIM card</p>
               </div>
             </div>
-          )}
-
-          <div className="button-group">
-            {selectedFlow === 'get' ? (
+            
+            <div className="input-group">
+              <input 
+                type="tel"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value)}
+                placeholder="+1 555 123 4567"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    flowMode === 'highlevel' ? startAuthentication() : startGranularFlow();
+                  }
+                }}
+              />
+            </div>
+          </section>
+        )}
+        
+        {/* High-Level Flow */}
+        {flowMode === 'highlevel' && (
+          <section className="section">
+            <div className="section-header">
+              <div className="section-icon">🚀</div>
+              <div className="section-title">
+                <h2>Start Authentication</h2>
+                <p>Click below to initiate the authentication flow</p>
+              </div>
+            </div>
+            
+            <button 
+              onClick={startAuthentication}
+              disabled={loading || (selectedFlow === 'verify' && !phoneInput)}
+              className={`action-button ${loading ? 'loading' : ''}`}
+            >
+              {!loading ? (
+                <span>
+                  {selectedFlow === 'verify' ? 'Verify Phone Number' : 'Get Phone Number'}
+                </span>
+              ) : (
+                <span>Processing...</span>
+              )}
+            </button>
+            
+            {/* Error Display */}
+            {error && (
+              <div className="error-message">
+                <span className="error-icon">⚠️</span>
+                <div>
+                  <strong>{error.code || 'Error'}</strong>
+                  <p>{error.message}</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Result Display */}
+            {result && (
+              <div className="result-success">
+                <h3>✅ Authentication Successful!</h3>
+                <div className="result-details">
+                  <p><strong>Phone Number:</strong> {result.phone_number}</p>
+                  <p><strong>Verified:</strong> {selectedFlow === 'verify' && result.verified !== undefined ? (result.verified ? 'Yes' : 'No') : 'Yes'}</p>
+                  {result.aud && <p><strong>Audience:</strong> {result.aud}</p>}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+        
+        {/* Granular Flow */}
+        {flowMode === 'granular' && (
+          <section className="section">
+            <div className="section-header">
+              <div className="section-icon">🔧</div>
+              <div className="section-title">
+                <h2>Granular Authentication Steps</h2>
+                <p>Control each step of the authentication process</p>
+              </div>
+            </div>
+            
+            {/* Step 1: Prepare */}
+            <div className={`step-card ${currentStep === 1 ? 'active' : ''} ${stepOneResp ? 'completed' : ''} ${stepOneError ? 'error' : ''}`}>
+              <div className="step-header">
+                <span className="step-number">1</span>
+                <h4>Prepare Authentication</h4>
+              </div>
+              <p>Initialize the authentication session with the server</p>
+              
               <button 
-                className="button-primary" 
-                onClick={handleGetNumber} 
-                disabled={isLoading}
+                onClick={executeStepOne}
+                disabled={stepOneResp !== null || loading || (selectedFlow === 'verify' && !phoneInput)}
+                className="step-button"
               >
-                {isLoading && <span className="loading-spinner"></span>}
-                {isLoading ? getLoadingText() : 'Get My Phone Number'}
+                {stepOneResp ? '✓ Completed' : 'Execute Step'}
               </button>
-            ) : (
+              
+              {stepOneResp && (
+                <div className="step-success">
+                  ✓ Session prepared. Strategy: {stepOneResp.authentication_strategy}
+                </div>
+              )}
+              {stepOneError && (
+                <div className="step-error">
+                  {stepOneError}
+                </div>
+              )}
+            </div>
+            
+            {/* Step 2: Browser Verification */}
+            <div className={`step-card ${currentStep === 2 ? 'active' : ''} ${stepTwoResp ? 'completed' : ''} ${stepTwoError ? 'error' : ''} ${!stepOneResp ? 'disabled' : ''}`}>
+              <div className="step-header">
+                <span className="step-number">2</span>
+                <h4>Browser Verification</h4>
+              </div>
+              <p>Invoke secure browser prompt for carrier verification</p>
+              
               <button 
-                className="button-primary" 
-                onClick={handleVerifyNumber} 
-                disabled={isLoading || !phoneInput || phoneError}
+                onClick={executeStepTwo}
+                disabled={!stepOneResp || stepTwoResp !== null || loading}
+                className="step-button"
               >
-                {isLoading && <span className="loading-spinner"></span>}
-                {isLoading ? getLoadingText() : 'Verify Phone Number'}
+                {stepTwoResp ? '✓ Completed' : 'Execute Step'}
+              </button>
+              
+              {stepTwoResp && (
+                <div className="step-success">
+                  ✓ Credential obtained from browser
+                </div>
+              )}
+              {stepTwoError && (
+                <div className="step-error">
+                  {stepTwoError}
+                </div>
+              )}
+            </div>
+            
+            {/* Step 3: Process Result */}
+            <div className={`step-card ${currentStep === 3 ? 'active' : ''} ${stepThreeResp ? 'completed' : ''} ${stepThreeError ? 'error' : ''} ${!stepTwoResp ? 'disabled' : ''}`}>
+              <div className="step-header">
+                <span className="step-number">3</span>
+                <h4>Process Verification</h4>
+              </div>
+              <p>Send credential to server for final verification</p>
+              
+              <button 
+                onClick={executeStepThree}
+                disabled={!stepTwoResp || stepThreeResp !== null || loading}
+                className="step-button"
+              >
+                {stepThreeResp ? '✓ Completed' : 'Execute Step'}
+              </button>
+              
+              {stepThreeResp && (
+                <div className="step-success">
+                  ✓ Verification complete! Phone: {stepThreeResp.phone_number}
+                  {stepThreeResp.verified !== undefined && (
+                    <span> - Verified: {stepThreeResp.verified ? 'Yes' : 'No'}</span>
+                  )}
+                </div>
+              )}
+              {stepThreeError && (
+                <div className="step-error">
+                  {stepThreeError}
+                </div>
+              )}
+            </div>
+            
+            {/* Reset Button */}
+            {(stepThreeResp || stepOneError || stepTwoError || stepThreeError) && (
+              <button 
+                onClick={resetGranularFlow}
+                className="reset-button"
+              >
+                Reset Flow
               </button>
             )}
-          </div>
-
-          {/* Retry button for errors */}
-          {error && !isLoading && (
-            <div style={{ marginTop: '10px' }}>
-              <button 
-                onClick={() => {
-                  retryLastRequest().catch(console.error);
-                }}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#ff9800',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                Retry Request
-              </button>
-            </div>
-          )}
-
-          {/* Progress Bar */}
-          {isLoading && (
-            <div className="progress-container">
-              <div className="progress-bar">
-                <div className="progress-line">
-                  <div 
-                    className={`progress-line-fill ${error ? 'error' : ''}`}
-                    style={{ 
-                      width: currentStep === 'requesting' ? '33%' : 
-                             currentStep === 'authenticating' ? '66%' : 
-                             currentStep === 'processing' ? '100%' : '0%'
-                    }}
-                  />
-                </div>
-                
-                <div className="progress-step">
-                  <div className={`progress-dot ${
-                    currentStep === 'requesting' ? 'active' : 
-                    (currentStep === 'authenticating' || currentStep === 'processing') ? 'completed' : ''
-                  } ${error && currentStep === 'requesting' ? 'error' : ''}`}>
-                    {(currentStep === 'authenticating' || currentStep === 'processing') && !error ? '✓' : '1'}
-                  </div>
-                  <span className={`progress-label ${
-                    currentStep === 'requesting' ? 'active' : 
-                    (currentStep === 'authenticating' || currentStep === 'processing') ? 'completed' : ''
-                  } ${error && currentStep === 'requesting' ? 'error' : ''}`}>
-                    Preparing Request
-                  </span>
-                </div>
-
-                <div className="progress-step">
-                  <div className={`progress-dot ${
-                    currentStep === 'authenticating' ? 'active' : 
-                    currentStep === 'processing' ? 'completed' : ''
-                  } ${error && currentStep === 'authenticating' ? 'error' : ''}`}>
-                    {currentStep === 'processing' && !error ? '✓' : '2'}
-                  </div>
-                  <span className={`progress-label ${
-                    currentStep === 'authenticating' ? 'active' : 
-                    currentStep === 'processing' ? 'completed' : ''
-                  } ${error && currentStep === 'authenticating' ? 'error' : ''}`}>
-                    Carrier Approval
-                  </span>
-                </div>
-
-                <div className="progress-step">
-                  <div className={`progress-dot ${
-                    currentStep === 'processing' ? 'active' : ''
-                  } ${error && currentStep === 'processing' ? 'error' : ''}`}>
-                    {error && currentStep === 'processing' ? '✕' : '3'}
-                  </div>
-                  <span className={`progress-label ${
-                    currentStep === 'processing' ? 'active' : ''
-                  } ${error && currentStep === 'processing' ? 'error' : ''}`}>
-                    Processing
-                  </span>
+            
+            {/* Final Result Display for Granular */}
+            {stepThreeResp && (
+              <div className="result-success">
+                <h3>✅ Authentication Successful!</h3>
+                <div className="result-details">
+                  <p><strong>Phone Number:</strong> {stepThreeResp.phone_number}</p>
+                  <p><strong>Verified:</strong> {stepThreeResp.verified !== undefined ? (stepThreeResp.verified ? 'Yes' : 'No') : 'Yes'}</p>
+                  {stepThreeResp.aud && <p><strong>Audience:</strong> {stepThreeResp.aud}</p>}
                 </div>
               </div>
-            </div>
-          )}
-        </section>
-
-        {/* Results Section */}
-        {error && resultFlow === selectedFlow && (
-          <div className={`message ${error.code === PhoneAuthErrorCode.CARRIER_NOT_ELIGIBLE ? 'message-warning' : 'message-error'}`}>
-            <span className="message-icon">{error.code === PhoneAuthErrorCode.CARRIER_NOT_ELIGIBLE ? '⚠️' : '✕'}</span>
-            <div className="message-content">
-              <h4>{error.code === PhoneAuthErrorCode.CARRIER_NOT_ELIGIBLE ? 'Carrier Not Supported' : 'Error'}</h4>
-              <p>{isPhoneAuthError(error) && isUserError(error) ? getUserMessage(error) : (error.message || 'An error occurred')}</p>
-              {error.details?.reason && (
-                <div className="carrier-info">
-                  <strong>Reason:</strong> {error.details.reason || 'Not supported by carrier'}
-                </div>
-              )}
-              {error.code && error.code !== PhoneAuthErrorCode.CARRIER_NOT_ELIGIBLE && (
-                <p className="error-code">
-                  <small>Error Code: {error.code}</small>
-                  {error.requestId && <><br /><small>Request ID: {error.requestId}</small></>}
-                </p>
-              )}
-              {error.browserError && (
-                <details className="browser-error-details">
-                  <summary>Browser Error Details</summary>
-                  <pre>{JSON.stringify(error.browserError, null, 2)}</pre>
-                </details>
-              )}
-            </div>
-          </div>
+            )}
+          </section>
         )}
-
-        {result && resultFlow === selectedFlow && (
-          <div className="message message-success">
-            <span className="message-icon">✓</span>
-            <div className="message-content">
-              <h4>Success</h4>
-              <p><strong>Phone Number:</strong> {result.phone_number}</p>
-              {result.verified !== undefined && (
-                <p><strong>Verified:</strong> {result.verified ? 'Yes' : 'No'}</p>
-              )}
-              {result.sessionInfo && (
-                <div className="session-info">
-                  <p><strong>Session Key:</strong></p>
-                  <pre className="session-data">{result.sessionInfo.session_key}</pre>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Info Section */}
-        <section className="section">
-          <div className="section-header">
-            <div className="section-icon">ℹ️</div>
-            <div className="section-title">
-              <h2>How It Works</h2>
-              <p>Secure authentication powered by carrier networks</p>
-            </div>
-          </div>
-
-          <div className="card-grid">
-            <div className="card">
-              <div className="card-icon">🔐</div>
-              <h3>No SMS Required</h3>
-              <p>Direct carrier verification without sending any text messages</p>
-            </div>
-
-            <div className="card">
-              <div className="card-icon">⚡</div>
-              <h3>Instant Verification</h3>
-              <p>Get results in seconds, not minutes</p>
-            </div>
-
-            <div className="card">
-              <div className="card-icon">🛡️</div>
-              <h3>Fraud Resistant</h3>
-              <p>Can't be intercepted or spoofed like SMS codes</p>
-            </div>
-          </div>
+        
+        {/* Debug Mode Toggle */}
+        <section className="section debug-section">
+          <label className="debug-toggle">
+            <input 
+              type="checkbox" 
+              checked={debugMode}
+              onChange={(e) => setDebugMode(e.target.checked)}
+            />
+            <span>Debug Mode</span>
+          </label>
         </section>
-
-        {/* Footer */}
-        <div className="powered-by">
-          <span>Powered by</span>
-          <img src={glideLogo} alt="Glide" className="powered-by-logo" />
-          <span>Glide Identity</span>
-        </div>
+        
+        {/* Debug Console */}
+        {debugMode && debugLogs.length > 0 && (
+          <section className="section">
+            <div className="section-header">
+              <div className="section-icon">🔍</div>
+              <div className="section-title">
+                <h2>Debug Console</h2>
+                <p>Detailed flow information</p>
+              </div>
+            </div>
+            
+            <div className="debug-console">
+              {debugLogs.map((log, index) => (
+                <div key={index} className="debug-entry">
+                  <span className="debug-time">{log.timestamp}</span>
+                  <span className={`debug-type ${log.type}`}>{log.type}</span>
+                  <div className="debug-message">{log.message}</div>
+                  {log.data && (
+                    <pre className="debug-data">{JSON.stringify(log.data, null, 2)}</pre>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            <button 
+              onClick={() => setDebugLogs([])}
+              className="clear-logs-button"
+            >
+              Clear Logs
+            </button>
+          </section>
+        )}
       </div>
-    </>
+    </div>
   );
 }
 
-export default App; 
+export default App;
