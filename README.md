@@ -2,20 +2,39 @@
 
 Experience carrier-grade phone authentication in **2 minutes**. No SMS, no delays, no fraud - just instant verification through SIM cards.
 
-## 💨 Start in 30 Seconds
+## 🚀 Quick Setup
+
+### Prerequisites
+- **Node.js 18+** (required)
+- **Go 1.21+** (recommended) or use Node.js backend as fallback
+
+### Setup Steps
 
 ```bash
-# Clone and install
+# 1. Clone the repository
+git clone https://github.com/YourOrg/magical-auth-quickstart-react.git
+cd magical-auth-quickstart-react
+
+# 2. Install dependencies
 npm install
+# This automatically downloads Go dependencies if Go is installed
 
-# Start the backend server
-npm run server
+# 3. Copy environment variables
+cp env.example .env
 
-# In a new terminal, start the React app
+# 4. (Optional) Add your API key to .env
+# Edit .env and add your GLIDE_API_KEY if you have one
+# The demo key works out-of-the-box for testing
+
+# 5. Start everything
 npm run dev
 ```
 
-**That's it!** Open http://localhost:3000 and try it out 🎉
+**That's it!** Your browser will open automatically at http://localhost:5173 🎉
+
+> **Note:** `npm run dev` starts the Go backend (port 3000) and React frontend (port 5173)
+> 
+> **No Go?** No problem! Use `npm run dev:node` for the Node.js backend instead
 
 ## 🎮 What You Can Do
 
@@ -41,11 +60,14 @@ npm run dev
 ```
 magical-auth-quickstart-react/
 ├── src/
-│   ├── App.jsx             # The entire app (both modes)
-│   └── App.css            # Styling
-├── server.ts              # Express backend server
-├── package.json           # Dependencies
-└── vite.config.js        # Vite configuration
+│   ├── App.jsx           # The entire React app (both modes)
+│   └── App.css          # Styling
+├── server.go            # Go backend server with Glide SDK
+├── package.json         # Dependencies and scripts
+├── vite.config.js      # Vite configuration
+├── env.example         # Example environment variables
+├── go.mod              # Go dependencies (auto-managed)
+└── go.sum              # Go dependency lock file
 ```
 
 ## 🔧 Want Your Own API Key?
@@ -99,10 +121,29 @@ consent_data: {
 }
 ```
 
+### Available Scripts
+
+```bash
+# Quick start (recommended)
+npm run dev              # Starts React + Go backend
+
+# Alternative backends
+npm run dev:node        # React + Node.js backend
+npm run dev:java        # React + Java backend (requires Gradle)
+
+# Run separately (for development)
+npm run dev:react       # Frontend only (port 5173)
+npm run dev:go         # Go backend only (port 3000)
+npm run server:node    # Node.js backend only (port 3000)
+
+# Build for production
+npm run build:all      # Build everything
+```
+
 ### Backend Port
 ```bash
-# Default is 3001
-PORT=3001 npm run server
+# Default is 3000 for backend, 5173 for frontend
+PORT=3000 npm run dev:go
 ```
 
 ## 📱 Browser Requirements
@@ -124,7 +165,13 @@ Works on:
 → Already handled! Default is T-Mobile USA
 
 **"Cannot connect to server"**
-→ Make sure backend is running (`npm run server`)
+→ Make sure backend is running (should start automatically with `npm run dev`)
+
+**"Go not found"**
+→ The Go backend is optional. You can use `npm run dev:node` for Node.js backend instead
+
+**"Module download failed"**
+→ Run `go mod download` in the project directory (this is done automatically by npm scripts)
 
 ## 🚀 What's Next?
 
@@ -132,14 +179,16 @@ Now that you've seen it work:
 
 1. **Try both modes** - Toggle between High Level and Granular
 2. **Check the console** - See all the API calls
-3. **Look at the code** - It's all in `src/App.jsx` and `server.ts`
+3. **Look at the code** - It's all in `src/App.jsx` and `server.go`
 4. **Integrate into your app** - Copy the patterns you need
 
 ## 📚 Resources
 
-- **[SDK Docs](https://docs.glideapi.com/)** - Full reference
-- **[API Spec](../GLIDE_API_SPECIFICATION.md)** - Detailed API info  
-- **[Nuxt Version](../magical-auth-quickstart-nuxt)** - Same thing in Nuxt/Vue
+- **[SDK Documentation](https://docs.glideapi.com/)** - Full SDK reference and API docs
+- **[Go SDK](https://github.com/GlideIdentity/glide-be-sdk-go)** - Official Go SDK used in this quickstart
+- **[Node.js SDK](https://www.npmjs.com/package/@glideidentity/sdk-node)** - Node.js SDK alternative
+- **[Nuxt Version](../magical-auth-quickstart-nuxt)** - Same quickstart in Nuxt/Vue
+- **[Vanilla JS Version](../magical-auth-quickstart-vanilla)** - Same quickstart in pure JavaScript
 
 ## 💬 Need Help?
 

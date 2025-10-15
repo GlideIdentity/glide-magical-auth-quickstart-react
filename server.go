@@ -3,27 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/ClearBlockchain/glide-sdk-go/glide"
+	glide "github.com/GlideIdentity/glide-be-sdk-go"
 	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 )
-
-// Request/Response types
-type PhoneAuthProcessRequest struct {
-	Response    json.RawMessage `json:"response"`
-	SessionInfo json.RawMessage `json:"sessionInfo"` // Required: full session info from prepare response
-	PhoneNumber string          `json:"phoneNumber,omitempty"`
-}
-
-type AuthProcessResponse struct {
-	PhoneNumber string `json:"phone_number"`
-	Verified    bool   `json:"verified,omitempty"`
-}
 
 type HealthCheckResponse struct {
 	Status           string   `json:"status"`
@@ -43,15 +32,6 @@ type ErrorResponse struct {
 }
 
 var glideClient *glide.Client
-
-func getStringFromMap(m map[string]interface{}, key string, defaultValue string) string {
-	if val, ok := m[key]; ok {
-		if strVal, ok := val.(string); ok {
-			return strVal
-		}
-	}
-	return defaultValue
-}
 
 func main() {
 	// Load environment variables
@@ -102,6 +82,25 @@ func main() {
 	// Add debug logging if enabled
 	if debugMode {
 		opts = append(opts, glide.WithDebug(true))
+	}
+
+	// Add log format if specified
+	logFormat := os.Getenv("GLIDE_LOG_FORMAT")
+	if logFormat != "" {
+		switch logFormat {
+		case "json":
+			opts = append(opts, glide.WithLogFormat(glide.LogFormatJSON))
+		case "simple":
+			opts = append(opts, glide.WithLogFormat(glide.LogFormatSimple))
+		case "pretty":
+			opts = append(opts, glide.WithLogFormat(glide.LogFormatPretty))
+		default:
+			// Default to pretty if not specified
+			opts = append(opts, glide.WithLogFormat(glide.LogFormatPretty))
+		}
+		if debugMode || logLevel == "debug" {
+			log.Printf("  - GLIDE_LOG_FORMAT: %s", logFormat)
+		}
 	}
 
 	glideClient = glide.New(opts...)
@@ -168,7 +167,10 @@ func phoneAuthPrepareHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("/api/phone-auth/prepare %+v\n", req)
+	// Only log if not using pretty format to avoid duplicate logs
+	if os.Getenv("GLIDE_LOG_FORMAT") != "pretty" {
+		log.Printf("/api/phone-auth/prepare %+v\n", req)
+	}
 
 	// Set default T-Mobile PLMN for GetPhoneNumber if neither phone_number nor PLMN provided
 	if req.UseCase == glide.UseCaseGetPhoneNumber && req.PhoneNumber == "" && (req.PLMN == nil || req.PLMN.MCC == "" || req.PLMN.MNC == "") {
@@ -179,7 +181,9 @@ func phoneAuthPrepareHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("Calling glide.MagicAuth.Prepare with: %+v\n", req)
+	if os.Getenv("GLIDE_LOG_FORMAT") != "pretty" {
+		log.Printf("Calling glide.MagicAuth.Prepare with: %+v\n", req)
+	}
 
 	// Call Glide SDK
 	ctx := context.Background()
@@ -189,11 +193,15 @@ func phoneAuthPrepareHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Response from SDK: %+v\n", response)
+	if os.Getenv("GLIDE_LOG_FORMAT") != "pretty" {
+		log.Printf("Response from SDK: %+v\n", response)
+	}
 
 	// The Go SDK returns the response in the correct format
 	if response.AuthenticationStrategy != "" && response.Data != nil && response.Session.SessionKey != "" {
-		log.Printf("Forwarding response from SDK: %+v\n", response)
+		if os.Getenv("GLIDE_LOG_FORMAT") != "pretty" {
+			log.Printf("Forwarding response from SDK: %+v\n", response)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	} else {
@@ -207,99 +215,73 @@ func phoneAuthProcessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req PhoneAuthProcessRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// Decode the request body into a generic map to pass through
+	var reqBody map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		log.Printf("Failed to decode request body: %v\n", err)
 		sendErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body", nil)
 		return
 	}
 
-	log.Printf("/api/phone-auth/process - HasResponse: %v, HasSessionInfo: %v, PhoneNumber: %s\n",
-		len(req.Response) > 0, len(req.SessionInfo) > 0, req.PhoneNumber)
+	// Extract fields
+	useCase, _ := reqBody["use_case"].(string)
+	session := reqBody["session"]
+	credential := reqBody["credential"]
 
-	// Parse the response into a map
-	var responseData map[string]interface{}
-	if err := json.Unmarshal(req.Response, &responseData); err != nil {
-		log.Printf("Failed to unmarshal response data: %v, raw: %s\n", err, string(req.Response))
-		sendErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid response data", nil)
+	// Debug logging to understand what we're receiving
+	sessionJSON, _ := json.Marshal(session)
+	credentialStr := ""
+	if credStr, ok := credential.(string); ok {
+		if len(credStr) > 100 {
+			credentialStr = credStr[:100] + "...[TRUNCATED]"
+		} else {
+			credentialStr = credStr
+		}
+	}
+
+	if os.Getenv("GLIDE_LOG_FORMAT") != "pretty" {
+		log.Printf("/api/phone-auth/process - UseCase: %s\n", useCase)
+		log.Printf("Session received (size: %d bytes): %s\n", len(sessionJSON), string(sessionJSON))
+		log.Printf("Credential received: %s\n", credentialStr)
+	}
+
+	// Validate required fields
+	if useCase == "" || session == nil || credential == nil {
+		sendErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR",
+			"use_case, session, and credential are required", nil)
 		return
 	}
 
-	// Parse SessionInfo (required)
-	var sessionData map[string]interface{}
-	if err := json.Unmarshal(req.SessionInfo, &sessionData); err != nil {
-		log.Printf("Failed to unmarshal session info: %v\n", err)
-		sendErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid session info", nil)
-		return
-	}
-
-	// Determine which method to call based on whether phoneNumber is provided
 	ctx := context.Background()
-	var phoneNumber string
-	var verified bool
+	var result interface{}
+	var err error
 
-	if req.PhoneNumber != "" {
-		// Use VerifyPhoneNumber when a phone number is provided
-		// Build SessionInfo from sessionData
-		sessionInfo := &glide.SessionInfo{
-			SessionKey: getStringFromMap(sessionData, "session_key", ""),
-			Nonce:      getStringFromMap(sessionData, "nonce", ""),
-			EncKey:     getStringFromMap(sessionData, "enc_key", ""),
-		}
-
-		verifyReq := glide.VerifyPhoneNumberRequest{
-			SessionInfo: sessionInfo,
-			Credential:  responseData,
-		}
-
-		log.Printf("Calling glide.MagicAuth.VerifyPhoneNumber with SessionInfo: {SessionKey:%s, Nonce:%s, EncKey:...}\n",
-			sessionInfo.SessionKey, sessionInfo.Nonce)
-
-		result, err := glideClient.MagicAuth.VerifyPhoneNumber(ctx, &verifyReq)
-		if err != nil {
-			handleGlideError(w, err)
-			return
-		}
-
-		log.Printf("VerifyPhoneNumber Response: %+v\n", result)
-		phoneNumber = result.PhoneNumber
-		verified = result.Verified
+	// Call the appropriate SDK method based on use_case
+	// The SDK now accepts the same structure the client sends
+	if useCase == "GetPhoneNumber" {
+		result, err = glideClient.MagicAuth.GetPhoneNumber(ctx, &glide.GetPhoneNumberRequest{
+			Session:    session,
+			Credential: credential,
+		})
+	} else if useCase == "VerifyPhoneNumber" {
+		result, err = glideClient.MagicAuth.VerifyPhoneNumber(ctx, &glide.VerifyPhoneNumberRequest{
+			Session:    session,
+			Credential: credential,
+		})
 	} else {
-		// Use GetPhoneNumber when no phone number is provided
-		// Build SessionInfo from sessionData
-		sessionInfo := &glide.SessionInfo{
-			SessionKey: getStringFromMap(sessionData, "session_key", ""),
-			Nonce:      getStringFromMap(sessionData, "nonce", ""),
-			EncKey:     getStringFromMap(sessionData, "enc_key", ""),
-		}
-
-		getReq := glide.GetPhoneNumberRequest{
-			SessionInfo: sessionInfo,
-			Credential:  responseData,
-		}
-
-		log.Printf("Calling glide.MagicAuth.GetPhoneNumber with SessionInfo: {SessionKey:%s, Nonce:%s, EncKey:...}\n",
-			sessionInfo.SessionKey, sessionInfo.Nonce)
-
-		result, err := glideClient.MagicAuth.GetPhoneNumber(ctx, &getReq)
-		if err != nil {
-			handleGlideError(w, err)
-			return
-		}
-
-		log.Printf("GetPhoneNumber Response: %+v\n", result)
-		phoneNumber = result.PhoneNumber
-		verified = false // GetPhoneNumber doesn't verify
+		sendErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR",
+			fmt.Sprintf("Invalid use_case. Must be 'GetPhoneNumber' or 'VerifyPhoneNumber', got: %s", useCase), nil)
+		return
 	}
 
-	// Return the result
-	response := AuthProcessResponse{
-		PhoneNumber: phoneNumber,
-		Verified:    verified,
+	if err != nil {
+		handleGlideError(w, err)
+		return
 	}
 
+	// Return the result as-is
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(result)
 }
 
 func handleGlideError(w http.ResponseWriter, err error) {
