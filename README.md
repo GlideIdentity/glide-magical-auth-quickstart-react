@@ -5,15 +5,18 @@ Experience carrier-grade phone authentication in **2 minutes**. No SMS, no delay
 ## 🚀 Quick Setup
 
 ### Prerequisites
-- **Node.js 18+** (required)
-- **Go 1.21+** (recommended) or use Node.js backend as fallback
+- **Node.js 18+** (required for frontend and Node.js backend)
+- Choose one backend option:
+  - **Go 1.21+** for Go backend (default)
+  - **Node.js 18+** for Node.js backend
+  - **Java 17+ & Gradle** for Java backend
 
 ### Setup Steps
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YourOrg/magical-auth-quickstart-react.git
-cd magical-auth-quickstart-react
+git clone https://github.com/GlideIdentity/glide-magic-auth-quickstart-react.git
+cd glide-magic-auth-quickstart-react
 
 # 2. Install dependencies
 npm install
@@ -30,11 +33,14 @@ cp env.example .env
 npm run dev
 ```
 
-**That's it!** Your browser will open automatically at http://localhost:5173 🎉
+**That's it!** Open http://localhost:3000 in your browser 🎉
 
-> **Note:** `npm run dev` starts the Go backend (port 3000) and React frontend (port 5173)
+> **Note:** The frontend runs on port 3000, backend API on port 3001
 > 
-> **No Go?** No problem! Use `npm run dev:node` for the Node.js backend instead
+> **Backend Options:**
+> - `npm run dev` - Uses Go backend (default)
+> - `npm run dev:node` - Uses Node.js backend
+> - `npm run dev:java` - Uses Java backend
 
 ## 🎮 What You Can Do
 
@@ -60,15 +66,22 @@ npm run dev
 ```
 magical-auth-quickstart-react/
 ├── src/
-│   ├── App.jsx           # The entire React app (both modes)
-│   └── App.css          # Styling
-├── server.go            # Go backend server with Glide SDK
-├── package.json         # Dependencies and scripts
-├── vite.config.js      # Vite configuration
-├── env.example         # Example environment variables
-├── go.mod              # Go dependencies (auto-managed)
-└── go.sum              # Go dependency lock file
+│   ├── App.jsx          # React frontend app
+│   ├── App.css         # Frontend styling
+│   └── main/java/      # Java backend source
+├── server.go           # Go backend implementation
+├── server.ts          # Node.js backend implementation  
+├── build.gradle       # Java build configuration
+├── package.json       # NPM scripts and dependencies
+├── vite.config.js    # Frontend build config
+├── go.mod            # Go dependencies
+└── env.example       # Environment variables template
 ```
+
+**Three Backend Options:**
+- **Go** (`server.go`) - High-performance, compiled backend
+- **Node.js** (`server.ts`) - JavaScript/TypeScript backend
+- **Java** (`src/main/java/`) - Spring Boot backend
 
 ## 🔧 Want Your Own API Key?
 
@@ -123,27 +136,32 @@ consent_data: {
 
 ### Available Scripts
 
+This quickstart supports **three backend options** - choose the one that matches your stack:
+
 ```bash
-# Quick start (recommended)
-npm run dev              # Starts React + Go backend
+# Quick start options
+npm run dev              # React + Go backend (default)
+npm run dev:node        # React + Node.js backend  
+npm run dev:java        # React + Java backend
 
-# Alternative backends
-npm run dev:node        # React + Node.js backend
-npm run dev:java        # React + Java backend (requires Gradle)
+# Run components separately
+npm run dev:react       # Frontend only (port 3000)
+npm run dev:go         # Go backend only (port 3001)
+npm run server:node    # Node.js backend only (port 3001)
+npm run server:java    # Java backend only (port 3001)
 
-# Run separately (for development)
-npm run dev:react       # Frontend only (port 5173)
-npm run dev:go         # Go backend only (port 3000)
-npm run server:node    # Node.js backend only (port 3000)
-
-# Build for production
+# Build commands
+npm run build          # Build frontend
+npm run build:server   # Build Node.js server
+npm run server:go:build    # Build Go server
+npm run server:java:build  # Build Java server
 npm run build:all      # Build everything
 ```
 
 ### Backend Port
 ```bash
-# Default is 3000 for backend, 5173 for frontend
-PORT=3000 npm run dev:go
+# Default is 3001 for backend API, 3000 for frontend
+PORT=3001 npm run dev:go
 ```
 
 ## 📱 Browser Requirements
@@ -165,13 +183,13 @@ Works on:
 → Already handled! Default is T-Mobile USA
 
 **"Cannot connect to server"**
-→ Make sure backend is running (should start automatically with `npm run dev`)
+→ Make sure backend is running on port 3001 (starts automatically with `npm run dev`)
 
-**"Go not found"**
-→ The Go backend is optional. You can use `npm run dev:node` for Node.js backend instead
-
-**"Module download failed"**
-→ Run `go mod download` in the project directory (this is done automatically by npm scripts)
+**"Go/Java/Gradle not found"**
+→ Choose a different backend:
+  - No Go? Use `npm run dev:node`
+  - No Java/Gradle? Use `npm run dev:node` or `npm run dev`
+  - No special requirements? Use `npm run dev:node`
 
 ## 🚀 What's Next?
 
@@ -179,16 +197,12 @@ Now that you've seen it work:
 
 1. **Try both modes** - Toggle between High Level and Granular
 2. **Check the console** - See all the API calls
-3. **Look at the code** - It's all in `src/App.jsx` and `server.go`
+3. **Look at the code** - Frontend in `src/App.jsx`, backend in `server.go`/`server.ts`/`JavaServer.java`
 4. **Integrate into your app** - Copy the patterns you need
 
 ## 📚 Resources
 
-- **[SDK Documentation](https://docs.glideapi.com/)** - Full SDK reference and API docs
-- **[Go SDK](https://github.com/GlideIdentity/glide-be-sdk-go)** - Official Go SDK used in this quickstart
-- **[Node.js SDK](https://www.npmjs.com/package/@glideidentity/sdk-node)** - Node.js SDK alternative
-- **[Nuxt Version](../magical-auth-quickstart-nuxt)** - Same quickstart in Nuxt/Vue
-- **[Vanilla JS Version](../magical-auth-quickstart-vanilla)** - Same quickstart in pure JavaScript
+- **[API Documentation](https://docs.glideapi.com/)** - Complete API reference and integration guides
 
 ## 💬 Need Help?
 
