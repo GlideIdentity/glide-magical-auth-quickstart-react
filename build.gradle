@@ -26,7 +26,7 @@ configurations {
 }
 
 repositories {
-    // mavenLocal()
+    mavenLocal()
     mavenCentral()
 }
 
@@ -34,8 +34,8 @@ dependencies {
     // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'
     
-    // Glide SDK - official version from Maven Central
-    implementation 'com.glideapi:glide-sdk-java:3.0.3'
+    // Glide SDK - local version with fixes
+    implementation 'com.glideidentity:glide-sdk-java:3.2.0'
     
     // Environment variables are handled by the SDK now
     
@@ -56,6 +56,21 @@ tasks.named('test') {
 
 springBoot {
     mainClass = 'com.glideidentity.JavaServer'
+}
+
+// Force IDE to recognize dependencies
+tasks.register('ideRefresh') {
+    dependsOn 'cleanIdea', 'idea'
+    description = 'Refresh IDE configuration'
+}
+
+// Configure IDE plugin
+apply plugin: 'idea'
+idea {
+    module {
+        downloadJavadoc = true
+        downloadSources = true
+    }
 }
 
 // Task to run the server

@@ -16,7 +16,6 @@ public class HealthCheckResponse {
     @Data
     @Builder
     public static class EnvInfo {
-        private boolean hasClientId;
-        private boolean hasClientSecret;
+        private boolean hasApiKey;
     }
 } 

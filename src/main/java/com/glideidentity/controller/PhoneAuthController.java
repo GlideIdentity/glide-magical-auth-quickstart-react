@@ -19,7 +19,7 @@ public class PhoneAuthController {
     private final GlideService glideService;
 
     @PostMapping("/phone-auth/prepare")
-    public ResponseEntity<?> prepare(@RequestBody AuthV2PrepDto request) {
+    public ResponseEntity<?> prepare(@RequestBody PrepareRequest request) {
         log.info("/api/phone-auth/prepare: {}", request);
         
         try {
@@ -132,8 +132,7 @@ public class PhoneAuthController {
                         .glideInitialized(glideService.isInitialized())
                         .glideProperties(glideService.getProperties())
                         .env(HealthCheckResponse.EnvInfo.builder()
-                                .hasClientId(System.getProperty("GLIDE_CLIENT_ID") != null || System.getenv("GLIDE_CLIENT_ID") != null)
-                                .hasClientSecret(System.getProperty("GLIDE_CLIENT_SECRET") != null || System.getenv("GLIDE_CLIENT_SECRET") != null)
+                                .hasApiKey(System.getProperty("GLIDE_API_KEY") != null || System.getenv("GLIDE_API_KEY") != null)
                                 .build())
                         .build()
         );

@@ -1,9 +1,9 @@
 package com.glideidentity.service;
 
-import com.glideidentity.dto.AuthV2PrepDto;
+import com.glideidentity.dto.PrepareRequest;
 import com.glideidentity.dto.PhoneAuthProcessRequest;
-import com.glideapi.GlideClient;
-import com.glideapi.services.dto.MagicAuthDtos.*;
+import com.glideidentity.GlideClient;
+import com.glideidentity.services.dto.MagicAuthDtos.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,28 +21,27 @@ public class GlideService {
 
     @PostConstruct
     public void init() {
-        String clientId = System.getenv("GLIDE_CLIENT_ID");
-        String clientSecret = System.getenv("GLIDE_CLIENT_SECRET");
+        String apiKey = System.getenv("GLIDE_API_KEY");
 
-        if (clientId != null && clientSecret != null) {
-            log.info("Initializing Glide client with automatic session management");
-            // Using GlideClient with automatic session management (ThreadLocal strategy by default)
-            this.glideClient = new GlideClient(clientId, clientSecret);
+        if (apiKey != null) {
+            log.info("Initializing Glide client with API key");
+            // Using GlideClient with API key authentication
+            this.glideClient = new GlideClient(apiKey);
             this.initialized = true;
-            log.info("Glide client initialized successfully with ThreadLocal session strategy");
+            log.info("Glide client initialized successfully with API key authentication");
         } else {
-            log.warn("Missing Glide credentials. Client not initialized.");
+            log.warn("Missing Glide API key. Client not initialized.");
         }
     }
 
-    public Object prepare(AuthV2PrepDto request) throws Exception {
+    public Object prepare(PrepareRequest request) throws Exception {
         if (!initialized) {
             throw new IllegalStateException("Glide client not initialized. Check your credentials.");
         }
 
         // Create SDK DTO
-        com.glideapi.services.dto.MagicAuthDtos.AuthV2PrepDto prepDto = 
-            new com.glideapi.services.dto.MagicAuthDtos.AuthV2PrepDto();
+        com.glideidentity.services.dto.MagicAuthDtos.PrepareRequest prepDto = 
+            new com.glideidentity.services.dto.MagicAuthDtos.PrepareRequest();
         
         // Set use case directly - expecting "GetPhoneNumber" or "VerifyPhoneNumber"
         if (request.getUseCase() != null) {
@@ -60,12 +59,12 @@ public class GlideService {
         
         // Set PLMN if provided
         if (request.getPlmn() != null && request.getPlmn().getMcc() != null && request.getPlmn().getMnc() != null) {
-            PlmnDto plmn = new PlmnDto(request.getPlmn().getMcc(), request.getPlmn().getMnc());
+            PLMN plmn = new PLMN(request.getPlmn().getMcc(), request.getPlmn().getMnc());
             prepDto.setPlmn(plmn);
         } else if (request.getPhoneNumber() == null) {
             // If neither phone_number nor PLMN was provided, use default T-Mobile PLMN
             // This matches the TypeScript server behavior
-            PlmnDto defaultPlmn = new PlmnDto("310", "160"); // T-Mobile USA
+            PLMN defaultPlmn = new PLMN("310", "160"); // T-Mobile USA
             prepDto.setPlmn(defaultPlmn);
         }
         
@@ -78,10 +77,19 @@ public class GlideService {
             );
             prepDto.setConsentData(consent);
         }
+        
+        // Set client info if provided
+        if (request.getClientInfo() != null) {
+            com.glideidentity.services.dto.MagicAuthDtos.ClientInfo clientInfo = 
+                new com.glideidentity.services.dto.MagicAuthDtos.ClientInfo(
+                    request.getClientInfo().getUserAgent(),
+                    request.getClientInfo().getPlatform()
+                );
+            prepDto.setClientInfo(clientInfo);
+        }
 
-        // Call SDK - session is managed automatically
-        // Use the service property and pass null for ApiConfig (or omit if there's an overload)
-        return glideClient.magicAuth.prepare(prepDto, null);
+        // Call SDK
+        return glideClient.magicAuth.prepare(prepDto);
     }
 
     public Object processCredential(PhoneAuthProcessRequest request) throws Exception {
@@ -89,32 +97,40 @@ public class GlideService {
             throw new IllegalStateException("Glide client not initialized. Check your credentials.");
         }
 
-        // Create SDK DTO
-        AuthV2ProcessCredentialDto processDto = new AuthV2ProcessCredentialDto();
-        
-        // Convert the raw objects to SDK types
-        DigitalCredentialResponse credentialResponse = objectMapper.convertValue(
-            request.getResponse(), 
-            DigitalCredentialResponse.class
-        );
-        processDto.setCredentialResponse(credentialResponse);
-        
-        SessionPayloadRaw sessionPayload = objectMapper.convertValue(
-            request.getSession(), 
-            SessionPayloadRaw.class
-        );
-        processDto.setSession(sessionPayload);
-        
-        if (request.getPhoneNumber() != null) {
-            processDto.setPhoneNumber(request.getPhoneNumber());
+        // Validate required fields
+        if (request.getCredential() == null || request.getCredential().isEmpty()) {
+            throw new IllegalArgumentException("credential is required");
         }
-
-        // Call SDK - session is managed automatically
-        // Use the service property and pass null for ApiConfig (or omit if there's an overload)
-        AuthenticateResponse result = glideClient.magicAuth.processCredential(processDto, null);
+        if (request.getSession() == null) {
+            throw new IllegalArgumentException("session is required");
+        }
+        if (request.getUseCase() == null) {
+            throw new IllegalArgumentException("use_case is required");
+        }
         
-        // Return the SDK response directly to match TypeScript server behavior
-        // The SDK returns all necessary fields including 'success'
+        // Convert session to SDK type
+        SessionInfo sessionInfo = objectMapper.convertValue(
+            request.getSession(), 
+            SessionInfo.class
+        );
+        
+        // Call appropriate SDK method based on use_case
+        Object result;
+        if (request.getUseCase().equals("VerifyPhoneNumber")) {
+            VerifyPhoneNumberRequest verifyRequest = new VerifyPhoneNumberRequest();
+            verifyRequest.setCredential(request.getCredential());
+            verifyRequest.setSession(sessionInfo);
+            result = glideClient.magicAuth.verifyPhoneNumber(verifyRequest);
+        } else if (request.getUseCase().equals("GetPhoneNumber")) {
+            GetPhoneNumberRequest getRequest = new GetPhoneNumberRequest();
+            getRequest.setCredential(request.getCredential());
+            getRequest.setSession(sessionInfo);
+            result = glideClient.magicAuth.getPhoneNumber(getRequest);
+        } else {
+            throw new IllegalArgumentException("Invalid use_case: " + request.getUseCase());
+        }
+        
+        // Return the SDK response directly
         return result;
     }
 

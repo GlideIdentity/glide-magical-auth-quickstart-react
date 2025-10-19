@@ -20,15 +20,13 @@ public class JavaServer {
                           System.getProperty("server.port", "3001"));
         
         // Check both system properties and environment variables
-        boolean hasClientId = System.getProperty("GLIDE_CLIENT_ID") != null || 
-                              System.getenv("GLIDE_CLIENT_ID") != null;
-        boolean hasClientSecret = System.getProperty("GLIDE_CLIENT_SECRET") != null || 
-                                  System.getenv("GLIDE_CLIENT_SECRET") != null;
+        boolean hasApiKey = System.getProperty("GLIDE_API_KEY") != null || 
+                            System.getenv("GLIDE_API_KEY") != null;
         
-        if (!hasClientId || !hasClientSecret) {
-            System.out.println("⚠️  Missing Glide credentials. Please check your .env file.");
+        if (!hasApiKey) {
+            System.out.println("⚠️  Missing Glide API key. Please check your .env file.");
         } else {
-            System.out.println("✅ Glide credentials loaded successfully!");
+            System.out.println("✅ Glide API key loaded successfully!");
         }
     }
 

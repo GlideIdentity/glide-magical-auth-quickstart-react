@@ -5,9 +5,9 @@ import lombok.Data;
 
 @Data
 public class PhoneAuthProcessRequest {
-    private Object response;
-    private Object session;
+    @JsonProperty("use_case")
+    private String useCase;
     
-    @JsonProperty("phoneNumber")  // Accept camelCase from frontend
-    private String phoneNumber;
+    private String credential;  // JWT string from Digital Credentials API
+    private Object session;
 } 

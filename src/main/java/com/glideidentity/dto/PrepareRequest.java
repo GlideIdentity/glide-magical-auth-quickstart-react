@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 @Data
-public class AuthV2PrepDto {
+public class PrepareRequest {
     @JsonProperty("use_case")
     private String useCase;
     
@@ -15,6 +15,9 @@ public class AuthV2PrepDto {
     
     @JsonProperty("consent_data")
     private ConsentData consentData;
+    
+    @JsonProperty("client_info")
+    private ClientInfo clientInfo;
     
     @Data
     public static class Plmn {
@@ -32,5 +35,14 @@ public class AuthV2PrepDto {
         
         @JsonProperty("policy_text")
         private String policyText;
+    }
+    
+    @Data
+    public static class ClientInfo {
+        @JsonProperty("user_agent")
+        private String userAgent;
+        
+        @JsonProperty("platform")
+        private String platform;
     }
 } 

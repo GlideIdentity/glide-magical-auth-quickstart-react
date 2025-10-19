@@ -9,9 +9,7 @@ import {
 } from 'glide-sdk';
 import type {
   GetPhoneNumberRequest,
-  GetPhoneNumberResponse,
-  VerifyPhoneNumberRequest,
-  VerifyPhoneNumberResponse
+  VerifyPhoneNumberRequest
 } from 'glide-sdk';
 // Import web SDK types for request body (they include use_case)
 import type {
