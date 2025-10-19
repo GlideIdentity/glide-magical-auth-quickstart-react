@@ -35,7 +35,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     
     // Glide SDK - local version with fixes
-    implementation 'com.glideidentity:glide-sdk-java:3.2.0'
+    implementation 'com.glideapi:glide-sdk-java:3.2.0'
     
     // Environment variables are handled by the SDK now
     
