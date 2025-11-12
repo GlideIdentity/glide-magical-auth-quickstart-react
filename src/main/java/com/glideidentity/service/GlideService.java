@@ -1,9 +1,17 @@
 package com.glideidentity.service;
 
-import com.glideidentity.dto.PrepareRequest;
-import com.glideidentity.dto.PhoneAuthProcessRequest;
-import com.glideidentity.GlideClient;
-import com.glideidentity.services.dto.MagicAuthDtos.*;
+import com.glideapi.GlideClient;
+import com.glideapi.exceptions.MagicAuthError;
+import com.glideapi.exceptions.MagicAuthErrorCode;
+import com.glideapi.services.dto.MagicAuthDtos;
+import com.glideapi.services.dto.MagicAuthDtos.ClientInfo;
+import com.glideapi.services.dto.MagicAuthDtos.ConsentData;
+import com.glideapi.services.dto.MagicAuthDtos.GetPhoneNumberRequest;
+import com.glideapi.services.dto.MagicAuthDtos.PLMN;
+import com.glideapi.services.dto.MagicAuthDtos.PrepareRequest;
+import com.glideapi.services.dto.MagicAuthDtos.SessionInfo;
+import com.glideapi.services.dto.MagicAuthDtos.UseCase;
+import com.glideapi.services.dto.MagicAuthDtos.VerifyPhoneNumberRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,7 +33,28 @@ public class GlideService {
 
         if (apiKey != null) {
             log.info("Initializing Glide client with API key");
+            
+            // Check for debug mode and log format from environment variables
+            String debugMode = System.getenv("GLIDE_DEBUG");
+            String logLevel = System.getenv("GLIDE_LOG_LEVEL");
+            String logFormat = System.getenv("GLIDE_LOG_FORMAT");
+            
+            if ("true".equals(debugMode) || "debug".equals(logLevel)) {
+                log.info("🔍 Debug logging enabled for Glide SDK");
+                log.info("📊 Configuration:");
+                log.info("  - GLIDE_DEBUG: {}", debugMode);
+                log.info("  - GLIDE_LOG_LEVEL: {}", logLevel);
+                log.info("  - GLIDE_LOG_FORMAT: {}", logFormat);
+                log.info("📡 You will see detailed logs for:");
+                log.info("  - API request/response details");
+                log.info("  - Performance metrics");
+                log.info("  - Retry attempts");
+                log.info("  - Error context");
+                log.info("🔒 Sensitive data is automatically sanitized");
+            }
+            
             // Using GlideClient with API key authentication
+            // The SDK will automatically pick up GLIDE_LOG_FORMAT and GLIDE_LOG_LEVEL from environment
             this.glideClient = new GlideClient(apiKey);
             this.initialized = true;
             log.info("Glide client initialized successfully with API key authentication");
@@ -34,104 +63,83 @@ public class GlideService {
         }
     }
 
-    public Object prepare(PrepareRequest request) throws Exception {
+    public Object prepare(com.glideidentity.dto.PrepareRequest request) throws Exception {
         if (!initialized) {
             throw new IllegalStateException("Glide client not initialized. Check your credentials.");
         }
 
-        // Create SDK DTO
-        com.glideidentity.services.dto.MagicAuthDtos.PrepareRequest prepDto = 
-            new com.glideidentity.services.dto.MagicAuthDtos.PrepareRequest();
+        // Build SDK request using the Builder pattern (best practice)
+        MagicAuthDtos.PrepareRequest.Builder builder = new MagicAuthDtos.PrepareRequest.Builder();
         
-        // Set use case directly - expecting "GetPhoneNumber" or "VerifyPhoneNumber"
+        // Let the SDK handle use case validation and conversion
         if (request.getUseCase() != null) {
-            // The SDK expects GET_PHONE_NUMBER format, but we receive GetPhoneNumber
+            // Simple conversion: just add underscores between words
             String enumValue = request.getUseCase()
                 .replaceAll("([a-z])([A-Z])", "$1_$2")
                 .toUpperCase();
-            prepDto.setUseCase(UseCase.valueOf(enumValue));
+            builder.withUseCase(UseCase.valueOf(enumValue));
         }
         
-        // Set phone number if provided
+        // Pass through all fields - let SDK handle validation
         if (request.getPhoneNumber() != null) {
-            prepDto.setPhoneNumber(request.getPhoneNumber());
+            builder.withPhoneNumber(request.getPhoneNumber());
         }
         
-        // Set PLMN if provided
-        if (request.getPlmn() != null && request.getPlmn().getMcc() != null && request.getPlmn().getMnc() != null) {
-            PLMN plmn = new PLMN(request.getPlmn().getMcc(), request.getPlmn().getMnc());
-            prepDto.setPlmn(plmn);
-        } else if (request.getPhoneNumber() == null) {
-            // If neither phone_number nor PLMN was provided, use default T-Mobile PLMN
-            // This matches the TypeScript server behavior
-            PLMN defaultPlmn = new PLMN("310", "160"); // T-Mobile USA
-            prepDto.setPlmn(defaultPlmn);
+        if (request.getPlmn() != null) {
+            var plmn = new PLMN(
+                request.getPlmn().getMcc(), 
+                request.getPlmn().getMnc()
+            );
+            builder.withPlmn(plmn);
         }
         
-        // Set consent data if provided
         if (request.getConsentData() != null) {
-            ConsentData consent = new ConsentData(
+            var consent = new ConsentData(
                 request.getConsentData().getConsentText(),
                 request.getConsentData().getPolicyLink(),
                 request.getConsentData().getPolicyText()
             );
-            prepDto.setConsentData(consent);
+            builder.withConsentData(consent);
         }
         
-        // Set client info if provided
         if (request.getClientInfo() != null) {
-            com.glideidentity.services.dto.MagicAuthDtos.ClientInfo clientInfo = 
-                new com.glideidentity.services.dto.MagicAuthDtos.ClientInfo(
-                    request.getClientInfo().getUserAgent(),
-                    request.getClientInfo().getPlatform()
-                );
-            prepDto.setClientInfo(clientInfo);
+            var clientInfo = new ClientInfo(
+                request.getClientInfo().getUserAgent(),
+                request.getClientInfo().getPlatform()
+            );
+            builder.withClientInfo(clientInfo);
         }
 
-        // Call SDK
-        return glideClient.magicAuth.prepare(prepDto);
+        // Build and execute - SDK will validate
+        return glideClient.magicAuth.prepare(builder.build());
     }
 
-    public Object processCredential(PhoneAuthProcessRequest request) throws Exception {
+    public Object processCredential(com.glideidentity.dto.PhoneAuthProcessRequest request) throws Exception {
         if (!initialized) {
             throw new IllegalStateException("Glide client not initialized. Check your credentials.");
         }
 
-        // Validate required fields
-        if (request.getCredential() == null || request.getCredential().isEmpty()) {
-            throw new IllegalArgumentException("credential is required");
-        }
-        if (request.getSession() == null) {
-            throw new IllegalArgumentException("session is required");
-        }
-        if (request.getUseCase() == null) {
-            throw new IllegalArgumentException("use_case is required");
-        }
-        
         // Convert session to SDK type
-        SessionInfo sessionInfo = objectMapper.convertValue(
+        var sessionInfo = objectMapper.convertValue(
             request.getSession(), 
             SessionInfo.class
         );
         
-        // Call appropriate SDK method based on use_case
-        Object result;
-        if (request.getUseCase().equals("VerifyPhoneNumber")) {
-            VerifyPhoneNumberRequest verifyRequest = new VerifyPhoneNumberRequest();
+        // Call appropriate SDK method based on use_case (let SDK validate)
+        if ("VerifyPhoneNumber".equals(request.getUseCase())) {
+            var verifyRequest = new VerifyPhoneNumberRequest();
             verifyRequest.setCredential(request.getCredential());
             verifyRequest.setSession(sessionInfo);
-            result = glideClient.magicAuth.verifyPhoneNumber(verifyRequest);
-        } else if (request.getUseCase().equals("GetPhoneNumber")) {
-            GetPhoneNumberRequest getRequest = new GetPhoneNumberRequest();
+            return glideClient.magicAuth.verifyPhoneNumber(verifyRequest);
+        } else if ("GetPhoneNumber".equals(request.getUseCase())) {
+            var getRequest = new GetPhoneNumberRequest();
             getRequest.setCredential(request.getCredential());
             getRequest.setSession(sessionInfo);
-            result = glideClient.magicAuth.getPhoneNumber(getRequest);
+            return glideClient.magicAuth.getPhoneNumber(getRequest);
         } else {
+            // Let SDK handle invalid use cases
             throw new IllegalArgumentException("Invalid use_case: " + request.getUseCase());
         }
-        
-        // Return the SDK response directly
-        return result;
     }
 
     public boolean isInitialized() {

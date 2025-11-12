@@ -6,16 +6,16 @@ import {
   MagicAuthErrorCode,
   MagicAuthPrepareRequest,
   UseCase
-} from 'glide-sdk';
+} from '@glideidentity/glide-sdk';
 import type {
   GetPhoneNumberRequest,
   VerifyPhoneNumberRequest
-} from 'glide-sdk';
+} from '@glideidentity/glide-sdk';
 // Import web SDK types for request body (they include use_case)
 import type {
   GetPhoneNumberRequest as WebGetPhoneNumberRequest,
   VerifyPhoneNumberRequest as WebVerifyPhoneNumberRequest
-} from 'glide-web-client-sdk';
+} from '@glideidentity/web-client-sdk';
 
 import dotenv from 'dotenv';
 
@@ -44,6 +44,10 @@ app.use(express.json());
 // Initialize Glide client with API key
 const glide = new GlideClient({
   apiKey: process.env.GLIDE_API_KEY!,
+  internal: {
+    authBaseUrl: process.env.GLIDE_AUTH_BASE_URL || 'https://oidc.gateway-x.io',
+    apiBaseUrl: process.env.GLIDE_API_BASE_URL || 'https://api.glideidentity.app'
+  }
 });
 
 // Phone Auth Request endpoint
@@ -123,6 +127,35 @@ app.get('/api/health', (_req: Request, res: Response<HealthCheckResponse>) => {
       apiBaseUrl: process.env.GLIDE_API_BASE_URL || 'https://api.glideidentity.app'
     }
   });
+});
+
+// Status proxy endpoint to avoid CORS issues
+app.get('/api/phone-auth/status/:sessionId', async (req, res) => {
+  try {
+    console.log(`[Status Proxy] Fetching status for session: ${req.params.sessionId}`);
+    const response = await fetch(
+      `https://api.glideidentity.app/public/public/status/${req.params.sessionId}`,
+      { 
+        headers: { 'Accept': 'application/json' }
+      }
+    );
+    
+    if (!response.ok) {
+      console.log(`[Status Proxy] Status check returned ${response.status}`);
+      const errorText = await response.text();
+      return res.status(response.status).send(errorText);
+    }
+    
+    const data = await response.json();
+    console.log(`[Status Proxy] Status response:`, data);
+    res.json(data);
+  } catch (error: any) {
+    console.error('[Status Proxy] Error:', error);
+    res.status(500).json({ 
+      error: 'Status check failed', 
+      message: error.message 
+    });
+  }
 });
 
 app.listen(PORT, () => {

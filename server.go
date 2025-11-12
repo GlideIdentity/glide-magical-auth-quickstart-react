@@ -114,6 +114,7 @@ func main() {
 	// Phone Auth endpoints
 	mux.HandleFunc("/api/phone-auth/prepare", phoneAuthPrepareHandler)
 	mux.HandleFunc("/api/phone-auth/process", phoneAuthProcessHandler)
+	mux.HandleFunc("/api/phone-auth/status/", phoneAuthStatusHandler)
 
 	// Setup CORS
 	c := cors.New(cors.Options{
@@ -343,4 +344,67 @@ func sendErrorResponse(w http.ResponseWriter, status int, code, message string, 
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func phoneAuthStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract session ID from the path
+	// Path format: /api/phone-auth/status/{sessionId}
+	path := strings.TrimPrefix(r.URL.Path, "/api/phone-auth/status/")
+	sessionID := strings.TrimSpace(path)
+
+	if sessionID == "" {
+		sendErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "Session ID is required", nil)
+		return
+	}
+
+	log.Printf("[Status Proxy] Fetching status for session: %s\n", sessionID)
+
+	// Make request to the public status endpoint
+	statusURL := fmt.Sprintf("https://api.glideidentity.app/public/public/status/%s", sessionID)
+
+	req, err := http.NewRequest("GET", statusURL, nil)
+	if err != nil {
+		log.Printf("[Status Proxy] Error creating request: %v\n", err)
+		sendErrorResponse(w, http.StatusInternalServerError, "REQUEST_ERROR",
+			"Failed to create status request", nil)
+		return
+	}
+
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[Status Proxy] Error fetching status: %v\n", err)
+		sendErrorResponse(w, http.StatusInternalServerError, "STATUS_CHECK_FAILED",
+			"Failed to check status", nil)
+		return
+	}
+	defer resp.Body.Close()
+
+	log.Printf("[Status Proxy] Status check returned %d\n", resp.StatusCode)
+
+	// Read the response body
+	var responseData interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+		log.Printf("[Status Proxy] Error decoding response: %v\n", err)
+		sendErrorResponse(w, http.StatusInternalServerError, "DECODE_ERROR",
+			"Failed to decode status response", nil)
+		return
+	}
+
+	log.Printf("[Status Proxy] Status response: %+v\n", responseData)
+
+	// Forward the response
+	if resp.StatusCode >= 400 {
+		w.WriteHeader(resp.StatusCode)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(responseData)
 }

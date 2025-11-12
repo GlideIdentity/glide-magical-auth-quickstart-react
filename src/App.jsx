@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PhoneAuthClient, UseCase } from 'glide-web-client-sdk';
+import { PhoneAuthClient, UseCase } from '@glideidentity/web-client-sdk';
 import glideLogo from './assets/Glide-Logomark.svg';
 import './App.css';
 
@@ -31,18 +31,19 @@ function App() {
     authClientRef.current = new PhoneAuthClient({
       endpoints: {
         prepare: '/api/phone-auth/prepare',
-        process: '/api/phone-auth/process'
+        process: '/api/phone-auth/process',
+        polling: '/api/phone-auth/status'
       },
       debug: true, // Enable SDK debug logging to console
       timeout: 30000,
-      onCrossDeviceDetected: () => {
-        addDebugLog('info', 'Cross-device authentication detected (QR code shown)');
-      },
-      onRetryAttempt: (attempt, maxAttempts) => {
-        addDebugLog('info', `Retry attempt ${attempt} of ${maxAttempts}`);
-      }
+      pollingInterval: 2000, // Poll every 2 seconds
+      maxPollingAttempts: 60, // Try for 2 minutes max
     });
-    addDebugLog('info', 'PhoneAuthClient initialized with debug mode', { endpoints: '/api/phone-auth/*' });
+    console.log('[App] SDK initialized with polling proxy endpoint');
+    addDebugLog('info', 'PhoneAuthClient initialized with polling proxy', { 
+      endpoints: '/api/phone-auth/*',
+      polling: '/api/phone-auth/status/{{session_id}}'
+    });
   }, []);
   
   // Debug logging helper
