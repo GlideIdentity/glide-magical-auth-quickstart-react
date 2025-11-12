@@ -3,7 +3,7 @@ package com.glideidentity.controller;
 import com.glideidentity.dto.*;
 import com.glideidentity.service.GlideService;
 import com.glideapi.exceptions.MagicAuthError;
-import com.glideapi.exceptions.MagicAuthErrorCode;
+import com.glideapi.services.dto.MagicAuthDtos.PrepareResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -23,21 +23,22 @@ public class PhoneAuthController {
     @PostMapping("/phone-auth/prepare")
     public ResponseEntity<?> prepare(@RequestBody PrepareRequest request) {
         log.info("/api/phone-auth/prepare: {}", request);
-        
+
         try {
-            var response = glideService.prepare(request);
+            // Response is always PrepareResponse for success
+            // Not eligible cases throw MagicAuthError with CARRIER_NOT_ELIGIBLE
+            PrepareResponse response = glideService.prepare(request);
             return ResponseEntity.ok(response);
         } catch (MagicAuthError e) {
             // Handle SDK errors properly (no reflection needed)
             log.info("MagicAuthError caught: code={}, status={}, message={}, requestId={}", 
                     e.getCode(), e.getStatus(), e.getMessage(), e.getRequestId());
             
-            @SuppressWarnings("unchecked")
             var errorResponse = MagicAuthErrorResponse.builder()
                     .error(e.getCode())
                     .message(e.getMessage())
                     .requestId(e.getRequestId())
-                    .details((Map<String, Object>) e.getDetails())
+                    .details(e.getDetails())
                     .build();
             
             return ResponseEntity.status(e.getStatus()).body(errorResponse);
@@ -74,12 +75,11 @@ public class PhoneAuthController {
             log.info("MagicAuthError caught: code={}, status={}, message={}, requestId={}", 
                     e.getCode(), e.getStatus(), e.getMessage(), e.getRequestId());
             
-            @SuppressWarnings("unchecked")
             var errorResponse = MagicAuthErrorResponse.builder()
                     .error(e.getCode())
                     .message(e.getMessage())
                     .requestId(e.getRequestId())
-                    .details((Map<String, Object>) e.getDetails())
+                    .details(e.getDetails())
                     .build();
             
             return ResponseEntity.status(e.getStatus()).body(errorResponse);

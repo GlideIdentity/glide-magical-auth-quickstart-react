@@ -2,16 +2,17 @@ package com.glideidentity.service;
 
 import com.glideapi.GlideClient;
 import com.glideapi.exceptions.MagicAuthError;
-import com.glideapi.exceptions.MagicAuthErrorCode;
 import com.glideapi.services.dto.MagicAuthDtos;
 import com.glideapi.services.dto.MagicAuthDtos.ClientInfo;
 import com.glideapi.services.dto.MagicAuthDtos.ConsentData;
 import com.glideapi.services.dto.MagicAuthDtos.GetPhoneNumberRequest;
+import com.glideapi.services.dto.MagicAuthDtos.GetPhoneNumberResponse;
 import com.glideapi.services.dto.MagicAuthDtos.PLMN;
-import com.glideapi.services.dto.MagicAuthDtos.PrepareRequest;
+import com.glideapi.services.dto.MagicAuthDtos.PrepareResponse;
 import com.glideapi.services.dto.MagicAuthDtos.SessionInfo;
 import com.glideapi.services.dto.MagicAuthDtos.UseCase;
 import com.glideapi.services.dto.MagicAuthDtos.VerifyPhoneNumberRequest;
+import com.glideapi.services.dto.MagicAuthDtos.VerifyPhoneNumberResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -63,7 +64,12 @@ public class GlideService {
         }
     }
 
-    public Object prepare(com.glideidentity.dto.PrepareRequest request) throws Exception {
+    /**
+     * Prepare authentication request.
+     * @return PrepareResponse for eligible users
+     * @throws MagicAuthError with CARRIER_NOT_ELIGIBLE if user is not eligible (422 status)
+     */
+    public PrepareResponse prepare(com.glideidentity.dto.PrepareRequest request) throws Exception {
         if (!initialized) {
             throw new IllegalStateException("Glide client not initialized. Check your credentials.");
         }
@@ -114,6 +120,13 @@ public class GlideService {
         return glideClient.magicAuth.prepare(builder.build());
     }
 
+    /**
+     * Process credential for either phone verification or phone number retrieval.
+     * Since Java doesn't have union types, we have to return Object here.
+     * @return VerifyPhoneNumberResponse for VerifyPhoneNumber use case, 
+     *         GetPhoneNumberResponse for GetPhoneNumber use case
+     * @throws MagicAuthError for authentication errors
+     */
     public Object processCredential(com.glideidentity.dto.PhoneAuthProcessRequest request) throws Exception {
         if (!initialized) {
             throw new IllegalStateException("Glide client not initialized. Check your credentials.");
