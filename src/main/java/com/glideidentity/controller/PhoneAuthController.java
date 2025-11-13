@@ -2,6 +2,8 @@ package com.glideidentity.controller;
 
 import com.glideidentity.dto.*;
 import com.glideidentity.service.GlideService;
+import com.glideapi.exceptions.MagicAuthError;
+import com.glideapi.services.dto.MagicAuthDtos.PrepareResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -21,51 +23,41 @@ public class PhoneAuthController {
     @PostMapping("/phone-auth/prepare")
     public ResponseEntity<?> prepare(@RequestBody PrepareRequest request) {
         log.info("/api/phone-auth/prepare: {}", request);
-        
+
         try {
-            var response = glideService.prepare(request);
+            // Response is always PrepareResponse for success
+            // Not eligible cases throw MagicAuthError with CARRIER_NOT_ELIGIBLE
+            PrepareResponse response = glideService.prepare(request);
             return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.info("Caught error:", e);
+        } catch (MagicAuthError e) {
+            // Handle SDK errors properly (no reflection needed)
+            log.info("MagicAuthError caught: code={}, status={}, message={}, requestId={}", 
+                    e.getCode(), e.getStatus(), e.getMessage(), e.getRequestId());
             
-            // Check if this is a MagicAuthError
-            if (e.getClass().getName().equals("com.glideapi.exceptions.MagicAuthError")) {
-                try {
-                    // Use reflection to get error details
-                    var codeMethod = e.getClass().getMethod("getCode");
-                    var statusMethod = e.getClass().getMethod("getStatus");
-                    var requestIdMethod = e.getClass().getMethod("getRequestId");
-                    var detailsMethod = e.getClass().getMethod("getDetails");
-                    
-                    String code = (String) codeMethod.invoke(e);
-                    Integer status = (Integer) statusMethod.invoke(e);
-                    String requestId = (String) requestIdMethod.invoke(e);
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> details = (Map<String, Object>) detailsMethod.invoke(e);
-                    
-                    log.info("MagicAuthError details: code={}, message={}, status={}, requestId={}, details={}", 
-                            code, e.getMessage(), status, requestId, details);
-                    
-                    var errorResponse = MagicAuthErrorResponse.builder()
-                            .error(code)
-                            .message(e.getMessage())
-                            .requestId(requestId)
-                            .details(details)
-                            .build();
-                    
-                    return ResponseEntity.status(status != null ? status : 500).body(errorResponse);
-                } catch (Exception reflectionError) {
-                    log.error("Failed to extract MagicAuthError details", reflectionError);
-                }
-            }
-            
-            // Handle other errors
-            log.error("Phone auth prepare error:", e);
             var errorResponse = MagicAuthErrorResponse.builder()
-                    .error("UNEXPECTED_ERROR")
+                    .error(e.getCode())
                     .message(e.getMessage())
+                    .requestId(e.getRequestId())
+                    .details(e.getDetails())
+                    .build();
+            
+            return ResponseEntity.status(e.getStatus()).body(errorResponse);
+        } catch (IllegalArgumentException e) {
+            // Handle validation errors
+            log.warn("Validation error in prepare: {}", e.getMessage());
+            var errorResponse = MagicAuthErrorResponse.builder()
+                    .error("VALIDATION_ERROR")
+                    .message(e.getMessage())
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+        } catch (Exception e) {
+            // Handle unexpected errors
+            log.error("Unexpected error in phone auth prepare:", e);
+            var errorResponse = MagicAuthErrorResponse.builder()
+                    .error("INTERNAL_ERROR")
+                    .message("An unexpected error occurred")
                     .details(getEnvironment().equals("development") ? 
-                            Map.of("stackTrace", e.getStackTrace()) : null)
+                            Map.of("message", e.getMessage()) : null)
                     .build();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
@@ -78,47 +70,35 @@ public class PhoneAuthController {
         try {
             var result = glideService.processCredential(request);
             return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.info("Caught error:", e);
+        } catch (MagicAuthError e) {
+            // Handle SDK errors properly (no reflection needed)
+            log.info("MagicAuthError caught: code={}, status={}, message={}, requestId={}", 
+                    e.getCode(), e.getStatus(), e.getMessage(), e.getRequestId());
             
-            // Check if this is a MagicAuthError
-            if (e.getClass().getName().equals("com.glideapi.exceptions.MagicAuthError")) {
-                try {
-                    // Use reflection to get error details
-                    var codeMethod = e.getClass().getMethod("getCode");
-                    var statusMethod = e.getClass().getMethod("getStatus");
-                    var requestIdMethod = e.getClass().getMethod("getRequestId");
-                    var detailsMethod = e.getClass().getMethod("getDetails");
-                    
-                    String code = (String) codeMethod.invoke(e);
-                    Integer status = (Integer) statusMethod.invoke(e);
-                    String requestId = (String) requestIdMethod.invoke(e);
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> details = (Map<String, Object>) detailsMethod.invoke(e);
-                    
-                    log.info("MagicAuthError details: code={}, message={}, status={}, requestId={}, details={}", 
-                            code, e.getMessage(), status, requestId, details);
-                    
-                    var errorResponse = MagicAuthErrorResponse.builder()
-                            .error(code)
-                            .message(e.getMessage())
-                            .requestId(requestId)
-                            .details(details)
-                            .build();
-                    
-                    return ResponseEntity.status(status != null ? status : 500).body(errorResponse);
-                } catch (Exception reflectionError) {
-                    log.error("Failed to extract MagicAuthError details", reflectionError);
-                }
-            }
-            
-            // Handle other errors
-            log.error("Phone auth process error:", e);
             var errorResponse = MagicAuthErrorResponse.builder()
-                    .error("UNEXPECTED_ERROR")
+                    .error(e.getCode())
                     .message(e.getMessage())
+                    .requestId(e.getRequestId())
+                    .details(e.getDetails())
+                    .build();
+            
+            return ResponseEntity.status(e.getStatus()).body(errorResponse);
+        } catch (IllegalArgumentException e) {
+            // Handle validation errors
+            log.warn("Validation error in process: {}", e.getMessage());
+            var errorResponse = MagicAuthErrorResponse.builder()
+                    .error("VALIDATION_ERROR")
+                    .message(e.getMessage())
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+        } catch (Exception e) {
+            // Handle unexpected errors
+            log.error("Unexpected error in phone auth process:", e);
+            var errorResponse = MagicAuthErrorResponse.builder()
+                    .error("INTERNAL_ERROR")
+                    .message("An unexpected error occurred")
                     .details(getEnvironment().equals("development") ? 
-                            Map.of("stackTrace", e.getStackTrace()) : null)
+                            Map.of("message", e.getMessage()) : null)
                     .build();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
@@ -140,5 +120,49 @@ public class PhoneAuthController {
     
     private String getEnvironment() {
         return System.getProperty("spring.profiles.active", "production");
+    }
+    
+    /**
+     * Status proxy endpoint to avoid CORS issues
+     * Forwards requests to the Glide public status endpoint
+     */
+    @GetMapping("/phone-auth/status/{sessionId}")
+    public ResponseEntity<?> getStatus(@PathVariable String sessionId) {
+        try {
+            log.info("[Status Proxy] Fetching status for session: {}", sessionId);
+            
+            // Create HTTP client
+            java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
+            String url = "https://api.glideidentity.app/public/public/status/" + sessionId;
+            
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create(url))
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+            
+            java.net.http.HttpResponse<String> response = httpClient.send(request, 
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            
+            log.info("[Status Proxy] Status check returned {}", response.statusCode());
+            
+            if (response.statusCode() >= 400) {
+                return ResponseEntity.status(response.statusCode()).body(response.body());
+            }
+            
+            // Parse and return the JSON response
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            Object jsonResponse = mapper.readValue(response.body(), Object.class);
+            log.info("[Status Proxy] Status response: {}", jsonResponse);
+            
+            return ResponseEntity.ok(jsonResponse);
+            
+        } catch (Exception e) {
+            log.error("[Status Proxy] Error:", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "error", "Status check failed",
+                "message", e.getMessage()
+            ));
+        }
     }
 } 

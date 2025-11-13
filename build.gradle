@@ -34,10 +34,8 @@ dependencies {
     // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'
     
-    // Glide SDK - local version with fixes
-    implementation 'com.glideapi:glide-sdk-java:3.2.0'
-    
-    // Environment variables are handled by the SDK now
+    // Glide SDK
+    implementation 'com.glideapi:glide-sdk-java:4.0.0'
     
     // JSON processing
     implementation 'com.fasterxml.jackson.core:jackson-databind'
@@ -96,6 +94,10 @@ bootRun {
             envFile.eachLine { line ->
                 if (!line.startsWith('#') && line.contains('=')) {
                     def (key, value) = line.split('=', 2)
+                    // Remove inline comments (anything after #)
+                    if (value.contains('#')) {
+                        value = value.substring(0, value.indexOf('#'))
+                    }
                     environment key.trim(), value.trim()
                 }
             }

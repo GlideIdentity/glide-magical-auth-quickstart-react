@@ -39,13 +39,13 @@
     <orderEntry type="module-library">
       <library>
         <CLASSES>
-          <root url="jar:///Users/stavblyman/.m2/repository/com/glideapi/glide-sdk-java/3.1.0/glide-sdk-java-3.1.0.jar!/"/>
+          <root url="jar:///Users/stavblyman/.m2/repository/com/glideapi/glide-sdk-java/3.3.0/glide-sdk-java-3.3.0.jar!/"/>
         </CLASSES>
         <JAVADOC>
-          <root url="jar:///Users/stavblyman/.m2/repository/com/glideapi/glide-sdk-java/3.1.0/glide-sdk-java-3.1.0-javadoc.jar!/"/>
+          <root url="jar:///Users/stavblyman/.m2/repository/com/glideapi/glide-sdk-java/3.3.0/glide-sdk-java-3.3.0-javadoc.jar!/"/>
         </JAVADOC>
         <SOURCES>
-          <root url="jar:///Users/stavblyman/.m2/repository/com/glideapi/glide-sdk-java/3.1.0/glide-sdk-java-3.1.0-sources.jar!/"/>
+          <root url="jar:///Users/stavblyman/.m2/repository/com/glideapi/glide-sdk-java/3.3.0/glide-sdk-java-3.3.0-sources.jar!/"/>
         </SOURCES>
       </library>
     </orderEntry>
