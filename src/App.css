@@ -609,6 +609,7 @@
 .button-group .step-button,
 .button-group .reset-button {
   flex: 1;
+  margin-top: 0;
 }
 
 /* Status Message (for polling state) */
