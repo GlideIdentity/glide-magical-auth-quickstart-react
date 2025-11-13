@@ -36,6 +36,9 @@ function App() {
       endpoints: {
         prepare: '/api/phone-auth/prepare',
         process: '/api/phone-auth/process',
+        // Note: The polling endpoint is optional - if not provided, the SDK will call
+        // the Glide Magic Auth server directly. It's included here for quickstart
+        // and development purposes to proxy through your backend.
         polling: '/api/phone-auth/status'
       },
       debug: true, // Enable SDK debug logging to console
