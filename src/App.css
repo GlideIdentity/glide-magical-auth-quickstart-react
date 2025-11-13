@@ -156,10 +156,13 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-.card:hover {
-  border-color: #d1d5db;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+/* Hover only for devices with hover capability (not touch devices) */
+@media (hover: hover) {
+  .card:hover {
+    border-color: #d1d5db;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
 }
 
 .card.selected {
@@ -174,8 +177,11 @@
   justify-content: center;
 }
 
-.card:hover .card-icon {
-  color: #374151;
+/* Icon color change on hover only for devices with hover capability */
+@media (hover: hover) {
+  .card:hover .card-icon {
+    color: #374151;
+  }
 }
 
 .card.selected .card-icon {
@@ -231,14 +237,18 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
 }
 
-.action-button:hover:not(:disabled) {
-  background: rgba(17, 24, 39, 0.95);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+/* Hover only for devices with hover capability (not touch devices) */
+@media (hover: hover) {
+  .action-button:hover:not(:disabled) {
+    background: rgba(17, 24, 39, 0.95);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  }
 }
 
 .action-button:active:not(:disabled) {
   transform: translateY(0);
+  background: rgba(17, 24, 39, 0.95);
 }
 
 .action-button:disabled {
@@ -335,14 +345,18 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.step-button:hover:not(:disabled) {
-  background: rgba(17, 24, 39, 0.95);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+/* Hover only for devices with hover capability (not touch devices) */
+@media (hover: hover) {
+  .step-button:hover:not(:disabled) {
+    background: rgba(17, 24, 39, 0.95);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
 }
 
 .step-button:active:not(:disabled) {
   transform: translateY(0);
+  background: rgba(17, 24, 39, 0.95);
 }
 
 .step-button:disabled {
@@ -386,10 +400,13 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.reset-button:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+/* Hover only for devices with hover capability (not touch devices) */
+@media (hover: hover) {
+  .reset-button:hover {
+    background: #f9fafb;
+    border-color: #d1d5db;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
 }
 
 /* Result Display */
@@ -593,10 +610,31 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.clear-logs-button:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
-  transform: translateY(-1px);
+/* Hover only for devices with hover capability (not touch devices) */
+@media (hover: hover) {
+  .clear-logs-button:hover {
+    background: #f9fafb;
+    border-color: #d1d5db;
+    transform: translateY(-1px);
+  }
+}
+
+/* Mobile-specific button touch feedback */
+@media (hover: none) and (pointer: coarse) {
+  .step-button,
+  .action-button,
+  .reset-button,
+  .clear-logs-button {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    touch-action: manipulation; /* Prevents double-tap zoom */
+  }
+  
+  .step-button:active:not(:disabled),
+  .action-button:active:not(:disabled),
+  .reset-button:active,
+  .clear-logs-button:active {
+    transition-duration: 0.1s; /* Faster feedback on touch */
+  }
 }
 
 /* Button Group */
