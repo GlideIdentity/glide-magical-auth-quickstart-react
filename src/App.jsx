@@ -36,20 +36,20 @@ function App() {
       endpoints: {
         prepare: '/api/phone-auth/prepare',
         process: '/api/phone-auth/process',
-        // Note: The polling endpoint is optional - if not provided, the SDK will call
-        // the Glide Magic Auth server directly. It's included here for quickstart
-        // and development purposes to proxy through your backend.
-        polling: '/api/phone-auth/status'
+        /* Polling Endpoint Configuration
+           Uncomment the line below to enable polling through your backend server.
+           If not provided, the SDK will call the Glide Magic Auth server directly.
+           Useful for development and production when you want to proxy requests. */
+        // polling: '/api/phone-auth/status',
       },
-      debug: true, // Enable SDK debug logging to console
-      timeout: 30000,
-      pollingInterval: 2000, // Poll every 2 seconds
-      maxPollingAttempts: 60, // Try for 2 minutes max
-    });
-    console.log('[App] SDK initialized with polling proxy endpoint');
-    addDebugLog('info', 'PhoneAuthClient initialized with polling proxy', { 
-      endpoints: '/api/phone-auth/*',
-      polling: '/api/phone-auth/status/{{session_id}}'
+      debug: true, // Enable SDK debug logging to console for development purposes
+      /* Mobile DevTools Console
+         Uncomment the code below to enable an on-screen console for mobile testing.
+         This provides visibility into logs and errors on mobile devices where 
+         traditional browser DevTools are not easily accessible. */
+      // devtools: {
+      //   showMobileConsole: true
+      // },
     });
   }, []);
   
@@ -344,6 +344,7 @@ function App() {
         {/* Flow Mode Toggle */}
         <section className="section mode-toggle-section">
           <div className="mode-toggle">
+            <div className={`toggle-slider ${flowMode === 'granular' ? 'right' : 'left'}`} />
             <button 
               className={`mode-btn ${flowMode === 'highlevel' ? 'active' : ''}`}
               onClick={() => setFlowMode('highlevel')}
@@ -369,6 +370,7 @@ function App() {
         <section className="section">
           <div className="section-header">
             <div className="section-icon">
+              {/* Toggle Switch Icon */}
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
                 {/* <!-- Left option - selected state --> */}
                 <rect x="2" y="4" width="9" height="13" rx="1.5" stroke="black" strokeWidth="2" fill="none"/>
@@ -392,6 +394,7 @@ function App() {
               onClick={() => selectFlow('verify')}
             >
               <div className="card-icon">
+                {/* Checkmark Icon */}
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none">
                   <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -405,6 +408,7 @@ function App() {
               onClick={() => selectFlow('get')}
             >
               <div className="card-icon">
+                {/* Phone Icon */}
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none">
                   <rect x="7" y="4" width="10" height="16" rx="2" stroke="currentColor" strokeWidth="2"/>
                   <line x1="10" y1="17" x2="14" y2="17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -421,6 +425,7 @@ function App() {
           <section className="section">
             <div className="section-header">
               <div className="section-icon">
+                {/* Phone Call Icon */}
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
                   <path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -452,6 +457,7 @@ function App() {
           <section className="section">
             <div className="section-header">
               <div className="section-icon">
+                {/* Lightning Icon */}
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
                   <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -515,6 +521,7 @@ function App() {
           <section className="section">
             <div className="section-header">
               <div className="section-icon">
+                {/* Settings Icon */}
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
                   <path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -694,6 +701,7 @@ function App() {
           <section className="section">
             <div className="section-header">
               <div className="section-icon">
+                {/* Search Icon */}
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
                   <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/>
                   <path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
