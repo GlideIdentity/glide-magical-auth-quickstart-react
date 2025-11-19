@@ -1,0 +1,20 @@
+# Example Gradle Properties Configuration
+# Copy this file to gradle.properties for local-only configuration
+# gradle.properties is ignored by git and will not be committed
+
+# Optional: Set a specific Java home path for Gradle
+# Uncomment and modify the path below if you need to use a specific Java version
+# Otherwise, Gradle will use JAVA_HOME environment variable or system default
+#
+# For macOS with Homebrew:
+# org.gradle.java.home=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+#
+# For Linux:
+# org.gradle.java.home=/usr/lib/jvm/java-21-openjdk
+#
+# For Windows:
+# org.gradle.java.home=C:/Program Files/Java/jdk-21
+
+# Note: This project requires Java 21 or later
+# If not specified here, ensure JAVA_HOME points to Java 21+ or run with:
+# JAVA_HOME=/path/to/java21 ./gradlew build
