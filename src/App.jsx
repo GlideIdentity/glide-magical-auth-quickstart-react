@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PhoneAuthClient, UseCase } from '@glideidentity/web-client-sdk';
+import { PhoneAuthClient, UseCase } from '@glideidentity/web-client-sdk/react';
 import glideLogo from './assets/Glide-Logomark.svg';
 import './App.css';
 
