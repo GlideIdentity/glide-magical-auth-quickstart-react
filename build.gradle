@@ -35,8 +35,8 @@ dependencies {
     // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'
     
-    // Glide SDK
-    implementation 'com.glideapi:glide-sdk-java:4.0.0'
+    // Glide SDK (using local 4.1.0 for testing)
+    implementation 'com.glideapi:glide-sdk-java:4.1.0'
     
     // JSON processing
     implementation 'com.fasterxml.jackson.core:jackson-databind'

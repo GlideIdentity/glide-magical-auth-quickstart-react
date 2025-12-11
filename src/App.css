@@ -707,3 +707,187 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
+
+/* SDK Config Button */
+.sdk-config-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.sdk-config-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.header {
+  position: relative;
+}
+
+/* Config Panel Overlay */
+.config-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+/* Config Panel */
+.config-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 380px;
+  max-width: 100vw;
+  height: 100vh;
+  background: #1d1d1f;
+  color: white;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.config-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.config-header button {
+  background: none;
+  border: none;
+  color: #86868b;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.config-header button:hover {
+  color: white;
+}
+
+.config-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.config-section {
+  margin-bottom: 32px;
+}
+
+.config-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #86868b;
+  margin: 0 0 16px 0;
+}
+
+.config-section > .config-hint {
+  color: #666;
+  font-size: 12px;
+  margin: -8px 0 16px 0;
+}
+
+.config-field {
+  margin-bottom: 20px;
+}
+
+.config-field label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: white;
+}
+
+.config-field .config-hint {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.config-field input[type="text"],
+.config-field input[type="number"],
+.config-field select {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+}
+
+.config-field input[type="text"]:focus,
+.config-field input[type="number"]:focus,
+.config-field select:focus {
+  outline: none;
+  border-color: #0071e3;
+}
+
+.config-field select option {
+  background: #1d1d1f;
+  color: white;
+}
+
+.config-field.checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.config-field.checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.config-footer {
+  padding: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 12px;
+}
+
+.config-footer .reset-button {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.config-footer .action-button {
+  flex: 1;
+}
+
+/* Code styling in step descriptions */
+code {
+  background: rgba(0, 113, 227, 0.1);
+  color: #0071e3;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 13px;
+}

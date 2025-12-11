@@ -1,7 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { PhoneAuthClient, UseCase } from '@glideidentity/web-client-sdk/react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { usePhoneAuth, USE_CASE } from '@glideidentity/web-client-sdk/react';
 import glideLogo from './assets/Glide-Logomark.svg';
 import './App.css';
+
+// Default SDK configuration values
+const defaultSdkConfig = {
+  pollingInterval: 2000,
+  maxPollingAttempts: 30,
+  modalTheme: 'auto',
+  viewMode: 'toggle',
+  title: '',
+  description: '',
+  showCloseButton: true,
+  closeOnBackdrop: true,
+  closeOnEscape: true
+};
 
 function App() {
   // State management
@@ -14,6 +27,20 @@ function App() {
   const [debugMode, setDebugMode] = useState(false);
   const [debugLogs, setDebugLogs] = useState([]);
   
+  // SDK Config panel state
+  const [sdkConfig, setSdkConfig] = useState(() => {
+    const saved = localStorage.getItem('sdkConfig');
+    if (saved) {
+      try {
+        return { ...defaultSdkConfig, ...JSON.parse(saved) };
+      } catch (e) {
+        return { ...defaultSdkConfig };
+      }
+    }
+    return { ...defaultSdkConfig };
+  });
+  const [configPanelOpen, setConfigPanelOpen] = useState(false);
+  
   // Granular flow state
   const [currentStep, setCurrentStep] = useState(0);
   const [stepOneResp, setStepOneResp] = useState(null);
@@ -23,46 +50,62 @@ function App() {
   const [stepTwoError, setStepTwoError] = useState(null);
   const [stepThreeError, setStepThreeError] = useState(null);
   
-  // Extended response handlers for retry functionality
-  const [extendedResponse, setExtendedResponse] = useState(null);
+  // InvokeResult for cancel functionality
+  const [invokeResult, setInvokeResult] = useState(null);
   const [isPolling, setIsPolling] = useState(false);
   
-  // PhoneAuthClient instance
-  const authClientRef = useRef(null);
+  // Use the React hook for phone authentication
+  const {
+    authenticate,
+    prepare,
+    invokeSecurePrompt,
+    getPhoneNumber,
+    verifyPhoneNumber,
+    reset: resetHook,
+    client,
+    isSupported
+  } = usePhoneAuth({
+    endpoints: {
+      prepare: '/api/phone-auth/prepare',
+      process: '/api/phone-auth/process',
+      polling: '/api/phone-auth/status',
+    },
+    debug: true,
+  });
   
-  // Initialize client on mount
+  // Get SDK invoke options based on config
+  const getSdkInvokeOptions = () => {
+    return {
+      pollingInterval: sdkConfig.pollingInterval,
+      maxPollingAttempts: sdkConfig.maxPollingAttempts,
+      modalOptions: {
+        theme: sdkConfig.modalTheme,
+        viewMode: sdkConfig.viewMode,
+        showCloseButton: sdkConfig.showCloseButton,
+        closeOnBackdropClick: sdkConfig.closeOnBackdrop,
+        closeOnEscape: sdkConfig.closeOnEscape,
+        ...(sdkConfig.title && { title: sdkConfig.title }),
+        ...(sdkConfig.description && { description: sdkConfig.description }),
+      }
+    };
+  };
+  
   useEffect(() => {
-    authClientRef.current = new PhoneAuthClient({
-      endpoints: {
-        prepare: '/api/phone-auth/prepare',
-        process: '/api/phone-auth/process',
-        /* Polling Endpoint Configuration
-           Uncomment the line below to enable polling through your backend server.
-           If not provided, the SDK will call the Glide Magic Auth server directly.
-           Useful for development and production when you want to proxy requests. */
-        // polling: '/api/phone-auth/status',
-      },
-      debug: true, // Enable SDK debug logging to console for development purposes
-      /* Mobile DevTools Console
-         Uncomment the code below to enable an on-screen console for mobile testing.
-         This provides visibility into logs and errors on mobile devices where 
-         traditional browser DevTools are not easily accessible. */
-      // devtools: {
-      //   showMobileConsole: true
-      // },
-    });
+    console.log('🚀 Magical Auth Quick Start - React (SDK v6 with usePhoneAuth hook)');
+    addDebugLog('info', 'usePhoneAuth hook initialized', { isSupported });
+    addDebugLog('info', 'SDK Configuration loaded', sdkConfig);
   }, []);
   
   // Debug logging helper
   const addDebugLog = (type, message, data) => {
-    if (debugMode) {
-      setDebugLogs(prev => [...prev, {
-        timestamp: new Date().toLocaleTimeString(),
-        type,
-        message,
-        data
-      }]);
-    }
+    const log = {
+      timestamp: new Date().toLocaleTimeString(),
+      type,
+      message,
+      data
+    };
+    setDebugLogs(prev => [...prev, log]);
+    console.log(`[${type.toUpperCase()}] ${message}`, data || '');
   };
   
   // Flow selection handler
@@ -77,12 +120,8 @@ function App() {
   
   // Reset entire application state
   const resetApp = () => {
-    // Clean up extended response if exists
-    if (extendedResponse && extendedResponse.cancel) {
-      extendedResponse.cancel();
-    }
-    if (extendedResponse && extendedResponse.stop_polling) {
-      extendedResponse.stop_polling();
+    if (invokeResult && invokeResult.cancel) {
+      invokeResult.cancel();
     }
     setFlowMode('highlevel');
     setSelectedFlow('verify');
@@ -91,27 +130,15 @@ function App() {
     setError(null);
     setResult(null);
     setDebugLogs([]);
-    setExtendedResponse(null);
+    setInvokeResult(null);
     setIsPolling(false);
-    // Reset granular flow state
-    setCurrentStep(0);
-    setStepOneResp(null);
-    setStepTwoResp(null);
-    setStepThreeResp(null);
-    setStepOneError(null);
-    setStepTwoError(null);
-    setStepThreeError(null);
+    resetGranularFlow();
+    resetHook();
     console.log('[App] Application reset to initial state');
   };
   
-  // High-level authentication - Uses SDK's actual high-level API
+  // High-level authentication using the hook
   const startAuthentication = async () => {
-    const authClient = authClientRef.current;
-    if (!authClient) {
-      setError({ code: 'NO_CLIENT', message: 'Authentication client not initialized' });
-      return;
-    }
-    
     if (selectedFlow === 'verify' && !phoneInput) {
       setError({ code: 'MISSING_PHONE', message: 'Please enter a phone number to verify' });
       return;
@@ -122,39 +149,22 @@ function App() {
     setResult(null);
     
     try {
-      addDebugLog('info', 'Starting high-level authentication', { 
+      addDebugLog('info', 'Starting high-level authentication via hook', { 
         flow: selectedFlow,
         phone: selectedFlow === 'verify' ? phoneInput : undefined 
       });
       
-      let result;
+      const options = {
+        use_case: selectedFlow === 'get' ? USE_CASE.GET_PHONE_NUMBER : USE_CASE.VERIFY_PHONE_NUMBER,
+        phone_number: selectedFlow === 'verify' ? phoneInput : undefined,
+      };
       
-      if (selectedFlow === 'get') {
-        // High-level API for getting phone number
-        console.log('[HighLevel] Calling getPhoneNumberComplete()');
-        result = await authClient.getPhoneNumberComplete({
-          plmn: { mcc: '310', mnc: '260' }, // T-Mobile USA for GetPhoneNumber
-          consent_data: {
-            consent_text: 'I agree to verify my phone number',
-            policy_link: 'https://example.com/privacy',
-            policy_text: 'Privacy Policy'
-          }
-        });
-      } else {
-        // High-level API for verifying phone number
-        console.log('[HighLevel] Calling verifyPhoneNumberComplete()');
-        result = await authClient.verifyPhoneNumberComplete(phoneInput, {
-          consent_data: {
-            consent_text: 'I agree to verify my phone number',
-            policy_link: 'https://example.com/privacy',
-            policy_text: 'Privacy Policy'
-          }
-        });
-      }
+      console.log('[HighLevel] Calling authenticate() via hook', options);
+      const authResult = await authenticate(options, getSdkInvokeOptions());
       
-      console.log('[HighLevel] Authentication result:', result);
-      setResult(result);
-      addDebugLog('success', 'High-level authentication successful', result);
+      console.log('[HighLevel] Authentication result:', authResult);
+      setResult(authResult);
+      addDebugLog('success', 'High-level authentication successful', authResult);
     } catch (err) {
       setError({ 
         code: err.code || 'UNKNOWN_ERROR',
@@ -166,39 +176,22 @@ function App() {
     }
   };
   
-  // Granular flow functions
-  const startGranularFlow = () => {
-    setCurrentStep(1);
-    resetGranularFlow();
-  };
-  
+  // Granular flow functions using the hook
   const executeStepOne = async () => {
-    const authClient = authClientRef.current;
-    if (!authClient) {
-      setStepOneError('Authentication client not initialized');
-      return;
-    }
-    
     setLoading(true);
     setStepOneError(null);
     setCurrentStep(1);
     
     try {
-      addDebugLog('info', 'Step 1: Preparing authentication');
+      addDebugLog('info', 'Step 1: Preparing authentication via hook');
       
       const options = {
-        use_case: selectedFlow === 'get' ? UseCase.GET_PHONE_NUMBER : UseCase.VERIFY_PHONE_NUMBER,
+        use_case: selectedFlow === 'get' ? USE_CASE.GET_PHONE_NUMBER : USE_CASE.VERIFY_PHONE_NUMBER,
         phone_number: selectedFlow === 'verify' ? phoneInput : undefined,
-        plmn: selectedFlow === 'get' ? { mcc: '310', mnc: '260' } : undefined, // T-Mobile USA for GetPhoneNumber
-        consent_data: {
-          consent_text: 'I agree to verify my phone number',
-          policy_link: 'https://example.com/privacy',
-          policy_text: 'Privacy Policy'
-        }
       };
       
       console.log('[Granular] Step 1: Preparing with options:', options);
-      const response = await authClient.preparePhoneRequest(options);
+      const response = await prepare(options);
       console.log('[Granular] Step 1: Prepare response:', response);
       setStepOneResp(response);
       setCurrentStep(2);
@@ -213,64 +206,56 @@ function App() {
   };
   
   const executeStepTwo = async (isRetry = false) => {
-    const authClient = authClientRef.current;
-    if (!authClient || !stepOneResp) return;
+    if (!stepOneResp) return;
+    
+    if (isRetry) {
+      if (invokeResult && invokeResult.cancel) {
+        invokeResult.cancel();
+      }
+      setInvokeResult(null);
+      setStepTwoError(null);
+    }
     
     setLoading(true);
     setStepTwoError(null);
     setCurrentStep(2);
     
     try {
-      addDebugLog('info', `Step 2: Invoking secure browser prompt ${isRetry ? '(retry)' : ''}`);
+      addDebugLog('info', `Step 2: Invoking secure browser prompt via hook ${isRetry ? '(retry)' : ''}`);
       console.log('[Granular] Step 2: About to invoke secure prompt with:', stepOneResp);
       
-      // Use extended mode for better control
-      const invokeResult = await authClient.invokeSecurePrompt(stepOneResp, {
-        executionMode: 'extended',
-        preventDefaultUI: false,
-        autoTrigger: !isRetry // Don't auto-trigger on retry
+      const result = await invokeSecurePrompt(stepOneResp, getSdkInvokeOptions());
+      
+      console.log('[Granular] Step 2: Invoke result:', {
+        strategy: result.strategy,
+        hasCancel: !!result.cancel,
+        session: result.session
       });
       
-      console.log('[Granular] Step 2: Extended invoke result:', invokeResult);
-      
       let credential;
-      if (invokeResult.strategy === 'link' || invokeResult.strategy === 'desktop') {
-        // Store extended response for potential retry
-        setExtendedResponse(invokeResult);
+      
+      if (result.strategy === 'link' || result.strategy === 'desktop') {
+        setInvokeResult(result);
         setIsPolling(true);
         
-        // For Link strategy, trigger if it's a retry
-        if (isRetry && invokeResult.trigger) {
-          console.log('[Granular] Step 2: Triggering retry for Link strategy');
-          invokeResult.trigger();
-        }
-        
-        // Wait for credential - SDK handles timeout
-        const authCredential = await invokeResult.credential;
-        // Link and Desktop return AuthCredential object, extract the credential string
+        console.log('[Granular] Step 2: Waiting for credential...');
+        const authCredential = await result.credential;
         credential = authCredential.credential || authCredential;
         setIsPolling(false);
-      } else if (invokeResult.strategy === 'ts43') {
-        // TS43 also returns extended format with a credential promise
-        console.log('[Granular] Step 2: TS43 extended result:', invokeResult);
-        const authCredential = await invokeResult.credential;
-        console.log('[Granular] Step 2: TS43 authCredential received:', authCredential);
-        // TS43 returns AuthCredential object, extract the credential string
+      } else if (result.strategy === 'ts43') {
+        console.log('[Granular] Step 2: Waiting for TS43 credential...');
+        const authCredential = await result.credential;
         credential = authCredential.credential || authCredential;
-        console.log('[Granular] Step 2: TS43 credential to send:', credential);
       } else {
-        // Fallback for any other strategy
-        credential = invokeResult.credential ? await invokeResult.credential : invokeResult;
+        const authCredential = await result.credential;
+        credential = authCredential.credential || authCredential;
       }
       
       console.log('[Granular] Step 2: Received credential:', credential);
       setStepTwoResp(credential);
       setCurrentStep(3);
       addDebugLog('success', 'Step 2 completed', credential);
-      // Clean up extended response
-      if (extendedResponse) {
-        setExtendedResponse(null);
-      }
+      setInvokeResult(null);
     } catch (err) {
       console.error('[Granular] Step 2: Error during secure prompt:', err);
       setStepTwoError(err.message || 'Browser verification failed');
@@ -282,21 +267,27 @@ function App() {
   };
   
   const executeStepThree = async () => {
-    const authClient = authClientRef.current;
-    if (!authClient || !stepOneResp || !stepTwoResp) return;
+    if (!stepOneResp || !stepTwoResp) return;
     
     setLoading(true);
     setStepThreeError(null);
     setCurrentStep(3);
     
     try {
-      addDebugLog('info', 'Step 3: Processing verification');
+      addDebugLog('info', 'Step 3: Processing verification via hook');
       console.log('[Granular] Step 3: Processing with credential:', stepTwoResp);
       console.log('[Granular] Step 3: Using session:', stepOneResp.session);
       
+      const authCredential = {
+        credential: stepTwoResp,
+        session: stepOneResp.session,
+        authenticated: true
+      };
+      
+      // Use hook methods for processing
       const response = selectedFlow === 'get'
-        ? await authClient.getPhoneNumber(stepTwoResp, stepOneResp.session)
-        : await authClient.verifyPhoneNumber(stepTwoResp, stepOneResp.session);
+        ? await getPhoneNumber(authCredential, stepOneResp.session)
+        : await verifyPhoneNumber(authCredential, stepOneResp.session);
       
       console.log('[Granular] Step 3: Final response:', response);
       setStepThreeResp(response);
@@ -319,13 +310,39 @@ function App() {
     setStepOneError(null);
     setStepTwoError(null);
     setStepThreeError(null);
-    // Clean up extended response if exists
-    if (extendedResponse && extendedResponse.cancel) {
-      extendedResponse.cancel();
+    if (invokeResult && invokeResult.cancel) {
+      invokeResult.cancel();
     }
-    setExtendedResponse(null);
+    setInvokeResult(null);
     setIsPolling(false);
     addDebugLog('info', 'Granular flow reset');
+  };
+  
+  const handleCancelPolling = () => {
+    if (invokeResult && invokeResult.cancel) {
+      invokeResult.cancel();
+    }
+    setInvokeResult(null);
+    setIsPolling(false);
+    setLoading(false);
+    setStepTwoError('Cancelled by user - you can retry');
+    console.log('[Granular] Step 2 cancelled, ready to retry');
+  };
+  
+  // SDK Config handlers
+  const handleConfigChange = (key, value) => {
+    setSdkConfig(prev => ({ ...prev, [key]: value }));
+  };
+  
+  const applyConfig = () => {
+    localStorage.setItem('sdkConfig', JSON.stringify(sdkConfig));
+    addDebugLog('success', 'SDK Configuration applied', sdkConfig);
+    setConfigPanelOpen(false);
+  };
+  
+  const resetConfig = () => {
+    setSdkConfig({ ...defaultSdkConfig });
+    addDebugLog('info', 'SDK Configuration reset to defaults');
   };
   
   return (
@@ -338,7 +355,140 @@ function App() {
         </div>
         <h1>Magical Auth Quick Start</h1>
         <p>Test carrier-grade phone verification in minutes. No SMS, no delays, no fraud.</p>
+        <button 
+          className="sdk-config-btn"
+          onClick={() => setConfigPanelOpen(true)}
+          title="SDK Configuration"
+        >
+          ⚙️ SDK Config
+        </button>
       </header>
+      
+      {/* SDK Config Panel */}
+      {configPanelOpen && (
+        <>
+          <div className="config-overlay" onClick={() => setConfigPanelOpen(false)} />
+          <aside className="config-panel">
+            <div className="config-header">
+              <h2>SDK Configuration</h2>
+              <button onClick={() => setConfigPanelOpen(false)}>✕</button>
+            </div>
+            
+            <div className="config-body">
+              <div className="config-section">
+                <h3>Core Options</h3>
+                
+                <div className="config-field">
+                  <label>Polling Interval (ms)</label>
+                  <p className="config-hint">How often to check authentication status.</p>
+                  <input 
+                    type="number" 
+                    value={sdkConfig.pollingInterval}
+                    onChange={(e) => handleConfigChange('pollingInterval', parseInt(e.target.value) || 2000)}
+                  />
+                </div>
+                
+                <div className="config-field">
+                  <label>Max Polling Attempts</label>
+                  <p className="config-hint">Maximum retries before timeout.</p>
+                  <input 
+                    type="number" 
+                    value={sdkConfig.maxPollingAttempts}
+                    onChange={(e) => handleConfigChange('maxPollingAttempts', parseInt(e.target.value) || 30)}
+                  />
+                </div>
+              </div>
+              
+              <div className="config-section">
+                <h3>Modal Options</h3>
+                <p className="config-hint">These affect the QR code modal during desktop authentication.</p>
+                
+                <div className="config-field">
+                  <label>Modal Theme</label>
+                  <select 
+                    value={sdkConfig.modalTheme}
+                    onChange={(e) => handleConfigChange('modalTheme', e.target.value)}
+                  >
+                    <option value="auto">Auto (System Preference)</option>
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                  </select>
+                </div>
+                
+                <div className="config-field">
+                  <label>View Mode</label>
+                  <select 
+                    value={sdkConfig.viewMode}
+                    onChange={(e) => handleConfigChange('viewMode', e.target.value)}
+                  >
+                    <option value="toggle">Toggle (iOS/Android switch)</option>
+                    <option value="dual">Dual (Both QR codes side by side)</option>
+                    <option value="pre-step">Pre-step (Choose OS first)</option>
+                  </select>
+                </div>
+                
+                <div className="config-field">
+                  <label>Title</label>
+                  <input 
+                    type="text" 
+                    value={sdkConfig.title}
+                    onChange={(e) => handleConfigChange('title', e.target.value)}
+                    placeholder="Custom title text"
+                  />
+                </div>
+                
+                <div className="config-field">
+                  <label>Description</label>
+                  <input 
+                    type="text" 
+                    value={sdkConfig.description}
+                    onChange={(e) => handleConfigChange('description', e.target.value)}
+                    placeholder="Optional subtitle"
+                  />
+                </div>
+                
+                <div className="config-field checkbox">
+                  <label>
+                    <input 
+                      type="checkbox" 
+                      checked={sdkConfig.showCloseButton}
+                      onChange={(e) => handleConfigChange('showCloseButton', e.target.checked)}
+                    />
+                    Show Close Button
+                  </label>
+                </div>
+                
+                <div className="config-field checkbox">
+                  <label>
+                    <input 
+                      type="checkbox" 
+                      checked={sdkConfig.closeOnBackdrop}
+                      onChange={(e) => handleConfigChange('closeOnBackdrop', e.target.checked)}
+                    />
+                    Close on Backdrop Click
+                  </label>
+                </div>
+                
+                <div className="config-field checkbox">
+                  <label>
+                    <input 
+                      type="checkbox" 
+                      checked={sdkConfig.closeOnEscape}
+                      onChange={(e) => handleConfigChange('closeOnEscape', e.target.checked)}
+                    />
+                    Close on Escape Key
+                  </label>
+                </div>
+              </div>
+            </div>
+            
+            <div className="config-footer">
+              <button onClick={resetConfig} className="reset-button">Reset to Defaults</button>
+              <button onClick={applyConfig} className="action-button">Apply & Close</button>
+            </div>
+          </aside>
+        </>
+      )}
       
       <div className="container">
         {/* Flow Mode Toggle */}
@@ -360,8 +510,8 @@ function App() {
           </div>
           <p className="mode-description">
             {flowMode === 'highlevel' 
-              ? 'Simple one-click authentication flow' 
-              : 'Step-by-step control over each authentication phase' 
+              ? 'Simple one-click authentication flow (using usePhoneAuth hook)' 
+              : 'Step-by-step control over each authentication phase (using usePhoneAuth hook)' 
             }
           </p>
         </section>
@@ -370,14 +520,10 @@ function App() {
         <section className="section">
           <div className="section-header">
             <div className="section-icon">
-              {/* Toggle Switch Icon */}
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
-                {/* <!-- Left option - selected state --> */}
                 <rect x="2" y="4" width="9" height="13" rx="1.5" stroke="black" strokeWidth="2" fill="none"/>
                 <rect x="4.5" y="7" width="4" height="4" rx="0.5" fill="black"/>
                 <path d="M5.5 9 L6.5 10 L7.5 8.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                
-                {/* <!-- Right option - unselected state --> */}
                 <rect x="13" y="4" width="9" height="13" rx="1.5" stroke="black" strokeWidth="1.5" fill="none" opacity="0.4"/>
                 <rect x="15.5" y="7" width="4" height="4" rx="0.5" stroke="black" strokeWidth="1.5" fill="none" opacity="0.4"/>
               </svg>
@@ -394,7 +540,6 @@ function App() {
               onClick={() => selectFlow('verify')}
             >
               <div className="card-icon">
-                {/* Checkmark Icon */}
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none">
                   <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -408,7 +553,6 @@ function App() {
               onClick={() => selectFlow('get')}
             >
               <div className="card-icon">
-                {/* Phone Icon */}
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none">
                   <rect x="7" y="4" width="10" height="16" rx="2" stroke="currentColor" strokeWidth="2"/>
                   <line x1="10" y1="17" x2="14" y2="17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -420,12 +564,11 @@ function App() {
           </div>
         </section>
         
-        {/* Phone Input Section (only for verify flow) */}
+        {/* Phone Input Section */}
         {selectedFlow === 'verify' && (
           <section className="section">
             <div className="section-header">
               <div className="section-icon">
-                {/* Phone Call Icon */}
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
                   <path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -444,7 +587,7 @@ function App() {
                 placeholder="+1 555 123 4567"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    flowMode === 'highlevel' ? startAuthentication(false) : startGranularFlow();
+                    flowMode === 'highlevel' ? startAuthentication() : executeStepOne();
                   }
                 }}
               />
@@ -457,7 +600,6 @@ function App() {
           <section className="section">
             <div className="section-header">
               <div className="section-icon">
-                {/* Lightning Icon */}
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
                   <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -468,41 +610,28 @@ function App() {
               </div>
             </div>
             
-            {/* Main action button */}
             <button 
-              onClick={() => {
-                console.log('[App] Starting high-level authentication');
-                startAuthentication();
-              }}
+              onClick={startAuthentication}
               disabled={loading || (selectedFlow === 'verify' && !phoneInput)}
               className={`action-button ${loading ? 'loading' : ''}`}
             >
               {!loading ? (
-                <span>
-                  {selectedFlow === 'verify' ? 'Verify Phone Number' : 'Get Phone Number'}
-                </span>
+                <span>{selectedFlow === 'verify' ? 'Verify Phone Number' : 'Get Phone Number'}</span>
               ) : (
                 <span>Processing...</span>
               )}
             </button>
             
-            {/* Error Display */}
             {error && (
               <div className="error-message">
                 <div style={{ flex: 1 }}>
                   <strong>{error.code || 'Error'}</strong>
                   <p>{error.message}</p>
-                  <button 
-                    onClick={resetApp}
-                    className="reset-button"
-                  >
-                    Start Over
-                  </button>
+                  <button onClick={resetApp} className="reset-button">Start Over</button>
                 </div>
               </div>
             )}
             
-            {/* Result Display */}
             {result && (
               <div className="result-success">
                 <h3>Authentication Successful!</h3>
@@ -521,24 +650,23 @@ function App() {
           <section className="section">
             <div className="section-header">
               <div className="section-icon">
-                {/* Settings Icon */}
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
                   <path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </div>
               <div className="section-title">
                 <h2>Granular Authentication Steps</h2>
-                <p>Control each step of the authentication process</p>
+                <p>Control each step using the usePhoneAuth hook methods</p>
               </div>
             </div>
             
-            {/* Step 1: Prepare */}
+            {/* Step 1 */}
             <div className={`step-card ${currentStep === 1 ? 'active' : ''} ${stepOneResp ? 'completed' : ''} ${stepOneError ? 'error' : ''}`}>
               <div className="step-header">
                 <span className="step-number">1</span>
                 <h4>Prepare Authentication</h4>
               </div>
-              <p>Initialize the authentication session with the server</p>
+              <p>Initialize the session using <code>prepare()</code></p>
               
               <button 
                 onClick={executeStepOne}
@@ -549,54 +677,23 @@ function App() {
               </button>
               
               {stepOneResp && (
-                <div className="step-success">
-                  Session prepared. Strategy: {stepOneResp.authentication_strategy}
-                </div>
+                <div className="step-success">Strategy: {stepOneResp.authentication_strategy}</div>
               )}
-              {stepOneError && (
-                <div className="step-error">
-                  {stepOneError}
-                </div>
-              )}
+              {stepOneError && <div className="step-error">{stepOneError}</div>}
             </div>
             
-            {/* Step 2: Browser Verification */}
+            {/* Step 2 */}
             <div className={`step-card ${currentStep === 2 ? 'active' : ''} ${stepTwoResp ? 'completed' : ''} ${stepTwoError ? 'error' : ''} ${!stepOneResp ? 'disabled' : ''}`}>
               <div className="step-header">
                 <span className="step-number">2</span>
                 <h4>Browser Verification</h4>
               </div>
-              <p>Invoke secure browser prompt for carrier verification</p>
+              <p>Invoke secure prompt using <code>invokeSecurePrompt()</code></p>
               
               {isPolling ? (
                 <div className="button-group">
-                  <button 
-                    onClick={() => {
-                      if (extendedResponse && extendedResponse.trigger) {
-                        console.log('[Granular] Retrying Link trigger');
-                        extendedResponse.trigger();
-                      }
-                    }}
-                    className="step-button"
-                  >
-                    Retry Open
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (extendedResponse && extendedResponse.stop_polling) {
-                        extendedResponse.stop_polling();
-                      }
-                      setExtendedResponse(null);
-                      setIsPolling(false);
-                      setLoading(false);  // Important: reset loading state
-                      setStepTwoError('Cancelled by user - you can retry');
-                      console.log('[Granular] Step 2 cancelled, ready to retry');
-                    }}
-                    className="reset-button"
-                    style={{ padding: '10px 20px' }}
-                  >
-                    Cancel
-                  </button>
+                  <button onClick={() => executeStepTwo(true)} className="step-button">Retry</button>
+                  <button onClick={handleCancelPolling} className="reset-button" style={{ padding: '10px 20px' }}>Cancel</button>
                 </div>
               ) : (
                 <button 
@@ -608,34 +705,24 @@ function App() {
                 </button>
               )}
               
-              {stepTwoResp && (
-                <div className="step-success">
-                  Credential obtained from browser
-                </div>
-              )}
+              {stepTwoResp && <div className="step-success">Credential obtained</div>}
               {stepTwoError && (
                 <div className="step-error">
                   <div>{stepTwoError}</div>
-                  {(extendedResponse || stepTwoError.includes('Cancelled')) && (
-                    <button 
-                      onClick={() => executeStepTwo(true)}
-                      className="step-button"
-                      style={{ marginTop: '10px', padding: '8px 16px', fontSize: '14px' }}
-                    >
-                      Retry Step
-                    </button>
+                  {stepTwoError.includes('Cancelled') && (
+                    <button onClick={() => executeStepTwo(true)} className="step-button" style={{ marginTop: '10px', padding: '8px 16px', fontSize: '14px' }}>Retry Step</button>
                   )}
                 </div>
               )}
             </div>
             
-            {/* Step 3: Process Result */}
+            {/* Step 3 */}
             <div className={`step-card ${currentStep === 3 ? 'active' : ''} ${stepThreeResp ? 'completed' : ''} ${stepThreeError ? 'error' : ''} ${!stepTwoResp ? 'disabled' : ''}`}>
               <div className="step-header">
                 <span className="step-number">3</span>
                 <h4>Process Verification</h4>
               </div>
-              <p>Send credential to server for final verification</p>
+              <p>Process using <code>{selectedFlow === 'get' ? 'getPhoneNumber()' : 'verifyPhoneNumber()'}</code></p>
               
               <button 
                 onClick={executeStepThree}
@@ -647,30 +734,17 @@ function App() {
               
               {stepThreeResp && (
                 <div className="step-success">
-                  Verification complete! Phone: {stepThreeResp.phone_number}
-                  {stepThreeResp.verified !== undefined && (
-                    <span> - Verified: {stepThreeResp.verified ? 'Yes' : 'No'}</span>
-                  )}
+                  Phone: {stepThreeResp.phone_number}
+                  {stepThreeResp.verified !== undefined && <span> - Verified: {stepThreeResp.verified ? 'Yes' : 'No'}</span>}
                 </div>
               )}
-              {stepThreeError && (
-                <div className="step-error">
-                  {stepThreeError}
-                </div>
-              )}
+              {stepThreeError && <div className="step-error">{stepThreeError}</div>}
             </div>
             
-            {/* Reset Button */}
             {(stepThreeResp || stepOneError || stepTwoError || stepThreeError) && (
-              <button 
-                onClick={resetGranularFlow}
-                className="reset-button"
-              >
-                Reset Flow
-              </button>
+              <button onClick={resetGranularFlow} className="reset-button">Reset Flow</button>
             )}
             
-            {/* Final Result Display for Granular */}
             {stepThreeResp && (
               <div className="result-success">
                 <h3>Authentication Successful!</h3>
@@ -684,24 +758,18 @@ function App() {
           </section>
         )}
         
-        {/* Debug Mode Toggle */}
+        {/* Debug Mode */}
         <section className="section debug-section">
           <label className="debug-toggle">
-            <input 
-              type="checkbox" 
-              checked={debugMode}
-              onChange={(e) => setDebugMode(e.target.checked)}
-            />
+            <input type="checkbox" checked={debugMode} onChange={(e) => setDebugMode(e.target.checked)} />
             <span>Debug Mode</span>
           </label>
         </section>
         
-        {/* Debug Console */}
         {debugMode && debugLogs.length > 0 && (
           <section className="section">
             <div className="section-header">
               <div className="section-icon">
-                {/* Search Icon */}
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
                   <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/>
                   <path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -719,19 +787,12 @@ function App() {
                   <span className="debug-time">{log.timestamp}</span>
                   <span className={`debug-type ${log.type}`}>{log.type}</span>
                   <div className="debug-message">{log.message}</div>
-                  {log.data && (
-                    <pre className="debug-data">{JSON.stringify(log.data, null, 2)}</pre>
-                  )}
+                  {log.data && <pre className="debug-data">{JSON.stringify(log.data, null, 2)}</pre>}
                 </div>
               ))}
             </div>
             
-            <button 
-              onClick={() => setDebugLogs([])}
-              className="clear-logs-button"
-            >
-              Clear Logs
-            </button>
+            <button onClick={() => setDebugLogs([])} className="clear-logs-button">Clear Logs</button>
           </section>
         )}
       </div>
