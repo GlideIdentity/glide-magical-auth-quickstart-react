@@ -4,7 +4,6 @@ import com.glideidentity.dto.*;
 import com.glideidentity.service.GlideService;
 import com.glideapi.exceptions.MagicAuthError;
 import com.glideapi.services.dto.MagicAuthDtos.PrepareResponse;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,10 +14,27 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api")
-@RequiredArgsConstructor
 public class PhoneAuthController {
 
     private final GlideService glideService;
+    private final String glideApiBaseUrl;
+    private final String glideDevEnv;
+    
+    public PhoneAuthController(GlideService glideService) {
+        this.glideService = glideService;
+        
+        // Load GLIDE_API_BASE_URL from environment (bootRun loads .env into env vars)
+        String baseUrl = System.getenv("GLIDE_API_BASE_URL");
+        if (baseUrl == null || baseUrl.isEmpty()) {
+            baseUrl = "https://api.glideidentity.app";
+        }
+        this.glideApiBaseUrl = baseUrl;
+        
+        // Load GLIDE_DEV_ENV for developer header
+        this.glideDevEnv = System.getenv("GLIDE_DEV_ENV");
+        
+        log.info("Status proxy config: baseUrl={}, devEnv={}", glideApiBaseUrl, glideDevEnv);
+    }
 
     @PostMapping("/phone-auth/prepare")
     public ResponseEntity<?> prepare(@RequestBody PrepareRequest request) {
@@ -133,13 +149,22 @@ public class PhoneAuthController {
             
             // Create HTTP client
             java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
-            String url = "https://api.glideidentity.app/public/public/status/" + sessionId;
             
-            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+            // Use the pre-loaded base URL (from .env or environment)
+            String url = glideApiBaseUrl + "/public/status/" + sessionId;
+            log.info("[Status Proxy] Using URL: {}", url);
+            
+            java.net.http.HttpRequest.Builder requestBuilder = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(url))
-                .header("Accept", "application/json")
-                .GET()
-                .build();
+                .header("Accept", "application/json");
+            
+            // Add developer header if configured
+            if (glideDevEnv != null && !glideDevEnv.isEmpty()) {
+                requestBuilder.header("developer", glideDevEnv);
+                log.info("[Status Proxy] Adding developer header: {}", glideDevEnv);
+            }
+            
+            java.net.http.HttpRequest request = requestBuilder.GET().build();
             
             java.net.http.HttpResponse<String> response = httpClient.send(request, 
                 java.net.http.HttpResponse.BodyHandlers.ofString());
