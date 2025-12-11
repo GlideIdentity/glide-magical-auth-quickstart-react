@@ -713,18 +713,28 @@
   position: absolute;
   top: 20px;
   right: 20px;
-  padding: 10px 16px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
+  border-radius: 12px;
   color: white;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 18px;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sdk-config-btn:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+.sdk-config-btn svg {
+  width: 20px;
+  height: 20px;
 }
 
 .header {
@@ -740,55 +750,85 @@
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   z-index: 999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
-/* Config Panel */
+.config-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Config Panel - Light Theme with Slide Animation */
 .config-panel {
   position: fixed;
   top: 0;
   right: 0;
-  width: 380px;
+  width: 420px;
   max-width: 100vw;
   height: 100vh;
-  background: #1d1d1f;
-  color: white;
+  background: #ffffff;
+  color: #1d1d1f;
   z-index: 1000;
   display: flex;
   flex-direction: column;
-  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+}
+
+.config-panel.open {
+  transform: translateX(0);
+}
+
+@media (max-width: 480px) {
+  .config-panel {
+    width: 100vw;
+  }
 }
 
 .config-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  background: #f9fafb;
 }
 
 .config-header h2 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
 }
 
 .config-header button {
   background: none;
   border: none;
   color: #86868b;
-  font-size: 20px;
+  font-size: 24px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 0;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .config-header button:hover {
-  color: white;
+  color: #1d1d1f;
 }
 
 .config-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 24px;
 }
 
 .config-section {
@@ -796,18 +836,33 @@
 }
 
 .config-section h3 {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #86868b;
-  margin: 0 0 16px 0;
+  color: #6b7280;
+  margin: 0 0 8px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.config-section > .config-hint {
-  color: #666;
+.config-section-note {
+  background: #f9fafb;
+  border-left: 3px solid #3b82f6;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  border-radius: 0 6px 6px 0;
   font-size: 12px;
-  margin: -8px 0 16px 0;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.config-section-note code {
+  background: #e5e7eb;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 11px;
 }
 
 .config-field {
@@ -818,14 +873,15 @@
   display: block;
   font-size: 14px;
   font-weight: 500;
-  margin-bottom: 6px;
-  color: white;
+  margin-bottom: 4px;
+  color: #111827;
 }
 
 .config-field .config-hint {
   font-size: 12px;
-  color: #666;
+  color: #6b7280;
   margin-bottom: 8px;
+  line-height: 1.5;
 }
 
 .config-field input[type="text"],
@@ -833,53 +889,202 @@
 .config-field select {
   width: 100%;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #ffffff;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
-  color: white;
+  color: #111827;
   font-size: 14px;
+  transition: all 0.2s ease;
 }
 
 .config-field input[type="text"]:focus,
 .config-field input[type="number"]:focus,
 .config-field select:focus {
   outline: none;
-  border-color: #0071e3;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.config-field input::placeholder {
+  color: #9ca3af;
+}
+
+.config-field select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 12px center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+  padding-right: 40px;
 }
 
 .config-field select option {
-  background: #1d1d1f;
-  color: white;
+  background: #ffffff;
+  color: #1d1d1f;
 }
 
-.config-field.checkbox label {
+/* Toggle Switch Styles for Config Panel */
+.config-field.toggle {
   display: flex;
   align-items: center;
-  gap: 10px;
-  cursor: pointer;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid #f0f0f2;
 }
 
-.config-field.checkbox input[type="checkbox"] {
+.config-field.toggle:last-child {
+  border-bottom: none;
+}
+
+.toggle-label-group {
+  flex: 1;
+}
+
+.toggle-label-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  margin-bottom: 2px;
+}
+
+.toggle-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.config-toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.config-toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.config-toggle-switch .config-toggle-track {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #e5e5e7;
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.config-toggle-switch .config-toggle-track:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.config-toggle-switch input:checked + .config-toggle-track {
+  background-color: #0071e3;
+}
+
+/* Developer Note Box */
+.config-developer-note {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid #3b82f6;
+  border-radius: 0 8px 8px 0;
+  padding: 12px 16px;
+  margin-top: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.config-developer-note svg {
+  flex-shrink: 0;
+  color: #3b82f6;
+  margin-top: 1px;
   width: 18px;
   height: 18px;
-  cursor: pointer;
+}
+
+.config-developer-note p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #374151;
+}
+
+.config-developer-note strong {
+  color: #111827;
+}
+
+.config-developer-note code {
+  background: #e5e7eb;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 11px;
+  color: #111827;
+}
+
+.config-toggle-switch input:checked + .config-toggle-track:before {
+  transform: translateX(20px);
 }
 
 .config-footer {
-  padding: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
   display: flex;
   gap: 12px;
+  flex-shrink: 0;
+  background: #f9fafb;
 }
 
-.config-footer .reset-button {
+.config-footer .btn-secondary {
   flex: 1;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  padding: 12px 16px;
+  background: #ffffff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.config-footer .action-button {
+.config-footer .btn-secondary:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.config-footer .btn-primary {
   flex: 1;
+  padding: 12px 16px;
+  background: #111827;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.config-footer .btn-primary:hover {
+  background: #1f2937;
 }
 
 /* Code styling in step descriptions */
