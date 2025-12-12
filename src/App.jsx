@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePhoneAuth, USE_CASE } from '@glideidentity/web-client-sdk/react';
 import glideLogo from './assets/Glide-Logomark.svg';
 import './App.css';
@@ -13,7 +13,9 @@ const defaultSdkConfig = {
   description: '',
   showCloseButton: true,
   closeOnBackdrop: true,
-  closeOnEscape: true
+  closeOnEscape: true,
+  debugMode: true,
+  showMobileConsole: false,
 };
 
 function App() {
@@ -68,9 +70,30 @@ function App() {
     endpoints: {
       prepare: '/api/phone-auth/prepare',
       process: '/api/phone-auth/process',
+      /**
+       * Polling Endpoint Configuration
+       * 
+       * This endpoint is used for desktop/QR authentication to poll for
+       * completion status while the user authenticates on their mobile device.
+       * 
+       * OPTIONS:
+       * 1. USE PROXY (current): '/api/phone-auth/status'
+       *    - Routes through your backend server
+       *    - Better for debugging (see requests in server logs)
+       *    - Avoids CORS issues
+       *    - Respects GLIDE_API_BASE_URL for environment switching
+       * 
+       * 2. DIRECT CALLS: Comment out or remove this line
+       *    - SDK will use status_url from prepare response OR
+       *    - Fall back to: https://api.glideidentity.app/public/status/
+       *    - May have CORS issues in some environments
+       */
       polling: '/api/phone-auth/status',
     },
-    debug: true,
+    debug: sdkConfig.debugMode,
+    devtools: {
+      showMobileConsole: sdkConfig.showMobileConsole,
+    },
   });
   
   // Get SDK invoke options based on config
@@ -340,6 +363,7 @@ function App() {
     setConfigPanelOpen(false);
   };
   
+  
   const resetConfig = () => {
     setSdkConfig({ ...defaultSdkConfig });
     addDebugLog('info', 'SDK Configuration reset to defaults');
@@ -509,11 +533,12 @@ function App() {
               </p>
             </div>
           </div>
+          
         </div>
         
         <div className="config-footer">
-          <button onClick={resetConfig} className="btn-secondary">Reset to Defaults</button>
-          <button onClick={applyConfig} className="btn-primary">Apply & Close</button>
+          <button onClick={resetConfig} className="btn-secondary">Reset</button>
+          <button onClick={applyConfig} className="btn-primary">Apply</button>
         </div>
       </aside>
       

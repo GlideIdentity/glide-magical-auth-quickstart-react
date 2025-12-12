@@ -139,8 +139,33 @@ public class PhoneAuthController {
     }
     
     /**
-     * Status proxy endpoint to avoid CORS issues
-     * Forwards requests to the Glide public status endpoint
+     * Status Proxy Endpoint for Desktop/QR Authentication Polling
+     * 
+     * PURPOSE:
+     * This endpoint proxies status polling requests to the Magic Auth server.
+     * It's used during desktop QR code authentication to check if the user
+     * has completed authentication on their mobile device.
+     * 
+     * WHY USE A PROXY:
+     * 1. CORS Avoidance: Browser security blocks direct cross-origin requests
+     *    to Magic Auth servers. This proxy runs on the same origin as your app.
+     * 2. Developer Debugging: Requests appear in your server logs, making it
+     *    easier to debug authentication flows during development.
+     * 3. Environment Flexibility: Easily switch between prod/staging/dev
+     *    environments using GLIDE_API_BASE_URL env variable.
+     * 
+     * ALTERNATIVE - DIRECT CALLS:
+     * You can skip this proxy by NOT configuring 'polling' in the SDK:
+     * 
+     *   // In your frontend SDK config, remove or comment out:
+     *   // polling: '/api/phone-auth/status'
+     *   
+     * When 'polling' is not set, the SDK will:
+     * 1. First try using the status_url from the prepare response
+     * 2. Fall back to calling Magic Auth's public endpoint directly:
+     *    https://api.glideidentity.app/public/status/{sessionId}
+     * 
+     * Note: Direct calls may have CORS issues in some environments.
      */
     @GetMapping("/phone-auth/status/{sessionId}")
     public ResponseEntity<?> getStatus(@PathVariable String sessionId) {
