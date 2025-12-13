@@ -9,6 +9,7 @@ import {
 } from '@glideidentity/glide-sdk';
 import type {
   GetPhoneNumberRequest,
+  LogFormat,
   VerifyPhoneNumberRequest
 } from '@glideidentity/glide-sdk';
 // Import web SDK types for request body (they include use_case)
@@ -49,7 +50,8 @@ const glide = new GlideClient({
     apiBaseUrl: process.env.GLIDE_API_BASE_URL || 'https://api.glideidentity.app'
   },
   // Developer environment - adds 'developer' header to requests
-  ...(process.env.GLIDE_DEV_ENV && { devEnv: process.env.GLIDE_DEV_ENV })
+  ...(process.env.GLIDE_DEV_ENV && { devEnv: process.env.GLIDE_DEV_ENV }),
+  logFormat: (process.env.GLIDE_LOG_FORMAT as LogFormat) || 'pretty',
 });
 
 // Phone Auth Request endpoint
