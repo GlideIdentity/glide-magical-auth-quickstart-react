@@ -252,23 +252,18 @@ function App() {
         session: result.session
       });
       
-      let credential;
-      
-      if (result.strategy === 'link' || result.strategy === 'desktop') {
+      // For Link/Desktop strategies, show polling UI while waiting
+      const needsPollingUI = result.strategy === 'link' || result.strategy === 'desktop';
+      if (needsPollingUI) {
         setInvokeResult(result);
         setIsPolling(true);
-        
-        console.log('[Granular] Step 2: Waiting for credential...');
-        const authCredential = await result.credential;
-        credential = authCredential.credential || authCredential;
+      }
+      
+      console.log(`[Granular] Step 2: Waiting for ${result.strategy} credential...`);
+      const credential = await result.credential;
+      
+      if (needsPollingUI) {
         setIsPolling(false);
-      } else if (result.strategy === 'ts43') {
-        console.log('[Granular] Step 2: Waiting for TS43 credential...');
-        const authCredential = await result.credential;
-        credential = authCredential.credential || authCredential;
-      } else {
-        const authCredential = await result.credential;
-        credential = authCredential.credential || authCredential;
       }
       
       console.log('[Granular] Step 2: Received credential:', credential);
@@ -298,16 +293,9 @@ function App() {
       console.log('[Granular] Step 3: Processing with credential:', stepTwoResp);
       console.log('[Granular] Step 3: Using session:', stepOneResp.session);
       
-      const authCredential = {
-        credential: stepTwoResp,
-        session: stepOneResp.session,
-        authenticated: true
-      };
-      
-      // Use hook methods for processing
       const response = selectedFlow === 'get'
-        ? await getPhoneNumber(authCredential, stepOneResp.session)
-        : await verifyPhoneNumber(authCredential, stepOneResp.session);
+        ? await getPhoneNumber(stepTwoResp, stepOneResp.session)
+        : await verifyPhoneNumber(stepTwoResp, stepOneResp.session);
       
       console.log('[Granular] Step 3: Final response:', response);
       setStepThreeResp(response);
