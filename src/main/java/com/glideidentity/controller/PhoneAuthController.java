@@ -2,8 +2,8 @@ package com.glideidentity.controller;
 
 import com.glideidentity.dto.*;
 import com.glideidentity.service.GlideService;
-import com.glideapi.exceptions.MagicAuthError;
-import com.glideapi.services.dto.MagicAuthDtos.PrepareResponse;
+import com.glideidentity.exceptions.MagicAuthError;
+import com.glideidentity.services.dto.MagicAuthDtos.PrepareResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

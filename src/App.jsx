@@ -65,7 +65,6 @@ function App() {
     getPhoneNumber,
     verifyPhoneNumber,
     reset: resetHook,
-    client,
     isSupported
   } = usePhoneAuth({
     endpoints: {
@@ -92,9 +91,6 @@ function App() {
       polling: '/api/phone-auth/status',
     },
     debug: sdkConfig.debugMode,
-    devtools: {
-      showMobileConsole: sdkConfig.showMobileConsole,
-    },
   });
   
   // Get SDK invoke options based on config
@@ -549,7 +545,7 @@ function App() {
                 <h3>Authentication Successful!</h3>
                 <div className="result-details">
                   <p><strong>Phone Number:</strong> {result.phone_number}</p>
-                  <p><strong>Verified:</strong> {selectedFlow === 'verify' && result.verified !== undefined ? (result.verified ? 'Yes' : 'No') : 'Yes'}</p>
+                  {result.verified !== undefined && <p><strong>Verified:</strong> {result.verified ? 'Yes' : 'No'}</p>}
                   {result.aud && <p><strong>Audience:</strong> {result.aud}</p>}
                 </div>
               </div>
@@ -647,7 +643,7 @@ function App() {
               {stepThreeResp && (
                 <div className="step-success">
                   Phone: {stepThreeResp.phone_number}
-                  {stepThreeResp.verified !== undefined && <span> - Verified: {stepThreeResp.verified ? 'Yes' : 'No'}</span>}
+                  {stepThreeResp.verified !== undefined && ` - Verified: ${stepThreeResp.verified ? 'Yes' : 'No'}`}
                 </div>
               )}
               {stepThreeError && <div className="step-error">{stepThreeError}</div>}
@@ -662,7 +658,7 @@ function App() {
                 <h3>Authentication Successful!</h3>
                 <div className="result-details">
                   <p><strong>Phone Number:</strong> {stepThreeResp.phone_number}</p>
-                  <p><strong>Verified:</strong> {stepThreeResp.verified !== undefined ? (stepThreeResp.verified ? 'Yes' : 'No') : 'Yes'}</p>
+                  {stepThreeResp.verified !== undefined && <p><strong>Verified:</strong> {stepThreeResp.verified ? 'Yes' : 'No'}</p>}
                   {stepThreeResp.aud && <p><strong>Audience:</strong> {stepThreeResp.aud}</p>}
                 </div>
               </div>
