@@ -66,28 +66,34 @@ npm run dev
 ```
 magical-auth-quickstart-react/
 ├── src/
-│   ├── App.jsx          # React frontend app
-│   ├── App.css         # Frontend styling
-│   └── main/java/      # Java backend source
-├── server.go           # Go backend implementation
-├── server.ts          # Node.js backend implementation  
-├── build.gradle       # Java build configuration
-├── package.json       # NPM scripts and dependencies
-├── vite.config.js    # Frontend build config
-├── go.mod            # Go dependencies
-└── env.example       # Environment variables template
+│   ├── App.jsx                    # React frontend app
+│   ├── App.css                    # Frontend styling
+│   ├── components/
+│   │   └── SdkConfigPanel.jsx     # SDK configuration panel
+│   └── main/java/                 # Java backend source
+│       └── com/glideidentity/
+│           ├── JavaServer.java    # Java entry point
+│           ├── controller/        # API endpoints
+│           └── service/           # Glide SDK integration
+├── server.go              # Go backend implementation
+├── server.ts              # Node.js backend implementation  
+├── build.gradle           # Java build configuration
+├── package.json           # NPM scripts and dependencies
+├── vite.config.js         # Frontend build config
+├── go.mod                 # Go dependencies
+└── env.example            # Environment variables template
 ```
 
 **Three Backend Options:**
 - **Go** (`server.go`) - High-performance, compiled backend
-- **Node.js** (`server.ts`) - JavaScript/TypeScript backend
-- **Java** (`src/main/java/`) - Spring Boot backend
+- **Node.js** (`server.ts`) - JavaScript/TypeScript backend using `@glideidentity/glide-sdk`
+- **Java** (`src/main/java/`) - Spring Boot backend using `glide-sdk-java`
 
 ## 🔧 Want Your Own API Key?
 
 The quickstart works out-of-the-box with our demo server. To use your own credentials:
 
-1. Get your API key from [Glide Dashboard](https://docs.glideapi.com/)
+1. Get your API key from [Glide Dashboard](https://docs.glideidentity.com/)
 2. Create `.env` file:
 ```env
 GLIDE_API_KEY=your_api_key_here
@@ -202,12 +208,20 @@ Now that you've seen it work:
 
 ## 📚 Resources
 
-- **[API Documentation](https://docs.glideapi.com/)** - Complete API reference and integration guides
+- **[SDK Documentation](https://docs.glideidentity.com/)** - Complete API reference and integration guides
 
 ## 💬 Need Help?
 
-- **Discord**: [Join our community](https://discord.gg/glide)
 - **Email**: support@glideidentity.com
+
+---
+
+## 🌟 Why React?
+
+- **Modern React** - Hooks and functional components
+- **Three backend options** - Choose Go, Node.js, or Java
+- **React hook** - Uses `usePhoneAuth` from `@glideidentity/web-client-sdk/react`
+- **TypeScript support** - Type-safe development
 
 ---
 
