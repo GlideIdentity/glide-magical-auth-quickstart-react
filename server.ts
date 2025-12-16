@@ -45,13 +45,8 @@ app.use(express.json());
 // Initialize Glide client with API key
 const glide = new GlideClient({
   apiKey: process.env.GLIDE_API_KEY!,
-  internal: {
-    authBaseUrl: process.env.GLIDE_AUTH_BASE_URL || 'https://oidc.gateway-x.io',
-    apiBaseUrl: process.env.GLIDE_API_BASE_URL || 'https://api.glideidentity.app'
-  },
-  // Developer environment - adds 'developer' header to requests
-  ...(process.env.GLIDE_DEV_ENV && { devEnv: process.env.GLIDE_DEV_ENV }),
   logFormat: (process.env.GLIDE_LOG_FORMAT as LogFormat) || 'pretty',
+  ...(process.env.GLIDE_DEV_ENV && { devEnv: process.env.GLIDE_DEV_ENV }),
 });
 
 // Phone Auth Request endpoint
