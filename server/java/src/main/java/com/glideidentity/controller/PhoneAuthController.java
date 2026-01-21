@@ -2,14 +2,16 @@ package com.glideidentity.controller;
 
 import com.glideidentity.dto.*;
 import com.glideidentity.service.GlideService;
-import com.glideidentity.exceptions.MagicAuthError;
-import com.glideidentity.services.dto.MagicAuthDtos.PrepareResponse;
+import com.glideidentity.service.SessionStoreService;
+import com.glideidentity.exception.MagicalAuthError;
+import com.glideidentity.core.Types.PrepareResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @RestController
@@ -17,38 +19,37 @@ import java.util.Map;
 public class PhoneAuthController {
 
     private final GlideService glideService;
-    private final String glideApiBaseUrl;
-    private final String glideDevEnv;
+    private final SessionStoreService sessionStore;
     
-    public PhoneAuthController(GlideService glideService) {
+    public PhoneAuthController(GlideService glideService, SessionStoreService sessionStore) {
         this.glideService = glideService;
-        
-        // Load GLIDE_API_BASE_URL from environment (bootRun loads .env into env vars)
-        String baseUrl = System.getenv("GLIDE_API_BASE_URL");
-        if (baseUrl == null || baseUrl.isEmpty()) {
-            baseUrl = "https://api.glideidentity.app";
-        }
-        this.glideApiBaseUrl = baseUrl;
-        
-        // Load GLIDE_DEV_ENV for developer header
-        this.glideDevEnv = System.getenv("GLIDE_DEV_ENV");
-        
-        log.info("Status proxy config: baseUrl={}, devEnv={}", glideApiBaseUrl, glideDevEnv);
+        this.sessionStore = sessionStore;
     }
 
     @PostMapping("/phone-auth/prepare")
     public ResponseEntity<?> prepare(@RequestBody PrepareRequest request) {
-        log.info("/api/phone-auth/prepare: {}", request);
+        log.info("📱 Prepare request: { use_case: '{}' }", request.getUseCase());
 
         try {
             // Response is always PrepareResponse for success
-            // Not eligible cases throw MagicAuthError with CARRIER_NOT_ELIGIBLE
+            // Not eligible cases throw MagicalAuthError with CARRIER_NOT_ELIGIBLE
             PrepareResponse response = glideService.prepare(request);
+            log.info("✅ Prepare success: { strategy: '{}', session_key: '{}' }",
+                response.getAuthenticationStrategy(), 
+                response.getSession() != null ? response.getSession().getSessionKey() : "null");
+            
+            // Store status_url for the polling proxy endpoint
+            sessionStore.extractStatusUrl(response).ifPresent(statusUrl -> {
+                if (response.getSession() != null) {
+                    sessionStore.storeStatusUrl(response.getSession().getSessionKey(), statusUrl);
+                }
+            });
+            
             return ResponseEntity.ok(response);
-        } catch (MagicAuthError e) {
+        } catch (MagicalAuthError e) {
             // Handle SDK errors properly (no reflection needed)
-            log.info("MagicAuthError caught: code={}, status={}, message={}, requestId={}", 
-                    e.getCode(), e.getStatus(), e.getMessage(), e.getRequestId());
+            log.error("❌ MagicalAuthError: code={}, status={}, message={}", 
+                    e.getCode(), e.getStatus(), e.getMessage());
             
             var errorResponse = MagicAuthErrorResponse.builder()
                     .error(e.getCode())
@@ -68,7 +69,7 @@ public class PhoneAuthController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
         } catch (Exception e) {
             // Handle unexpected errors
-            log.error("Unexpected error in phone auth prepare:", e);
+            log.error("❌ Unexpected error in phone auth prepare:", e);
             var errorResponse = MagicAuthErrorResponse.builder()
                     .error("INTERNAL_ERROR")
                     .message("An unexpected error occurred")
@@ -81,15 +82,15 @@ public class PhoneAuthController {
 
     @PostMapping("/phone-auth/process")
     public ResponseEntity<?> process(@RequestBody PhoneAuthProcessRequest request) {
-        log.info("/api/phone-auth/process: {}", request);
+        log.info("🔐 Process request: { use_case: '{}' }", request.getUseCase());
         
         try {
             var result = glideService.processCredential(request);
             return ResponseEntity.ok(result);
-        } catch (MagicAuthError e) {
+        } catch (MagicalAuthError e) {
             // Handle SDK errors properly (no reflection needed)
-            log.info("MagicAuthError caught: code={}, status={}, message={}, requestId={}", 
-                    e.getCode(), e.getStatus(), e.getMessage(), e.getRequestId());
+            log.error("❌ MagicalAuthError: code={}, status={}, message={}", 
+                    e.getCode(), e.getStatus(), e.getMessage());
             
             var errorResponse = MagicAuthErrorResponse.builder()
                     .error(e.getCode())
@@ -109,7 +110,7 @@ public class PhoneAuthController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
         } catch (Exception e) {
             // Handle unexpected errors
-            log.error("Unexpected error in phone auth process:", e);
+            log.error("❌ Unexpected error in phone auth process:", e);
             var errorResponse = MagicAuthErrorResponse.builder()
                     .error("INTERNAL_ERROR")
                     .message("An unexpected error occurred")
@@ -117,6 +118,36 @@ public class PhoneAuthController {
                             Map.of("message", e.getMessage()) : null)
                     .build();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    /**
+     * Reports that an authentication flow was started.
+     * This call can be made asynchronously without blocking the flow.
+     */
+    @PostMapping("/phone-auth/invoke")
+    public ResponseEntity<?> invoke(@RequestBody Map<String, String> request) {
+        // Frontend SDK sends session_id (not session_key)
+        String sessionId = request.get("session_id");
+        
+        if (sessionId == null || sessionId.isEmpty()) {
+            log.warn("⚠️ [Invoke] No session_id provided");
+            return ResponseEntity.ok(Map.of("success", false, "reason", "missing_session_id"));
+        }
+        
+        try {
+            String sessionIdPreview = sessionId.length() > 8 
+                ? sessionId.substring(0, 8) + "..." 
+                : sessionId;
+            log.info("📊 [Invoke] Reporting invocation for session: {}", sessionIdPreview);
+            
+            var result = glideService.reportInvocation(sessionId);
+            log.info("✅ [Invoke] Report response: {}", result);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            // Log the error but NEVER fail the response with an error status code
+            log.error("❌ [Invoke] Failed to report invocation: {}", e.getMessage());
+            return ResponseEntity.ok(Map.of("success", false, "error", e.getMessage()));
         }
     }
 
@@ -128,7 +159,8 @@ public class PhoneAuthController {
                         .glideInitialized(glideService.isInitialized())
                         .glideProperties(glideService.getProperties())
                         .env(HealthCheckResponse.EnvInfo.builder()
-                                .hasApiKey(System.getProperty("GLIDE_API_KEY") != null || System.getenv("GLIDE_API_KEY") != null)
+                                .hasClientCredentials(
+                                    (System.getenv("GLIDE_CLIENT_ID") != null && System.getenv("GLIDE_CLIENT_SECRET") != null))
                                 .build())
                         .build()
         );
@@ -141,55 +173,38 @@ public class PhoneAuthController {
     /**
      * Status Proxy Endpoint for Desktop/QR Authentication Polling
      * 
-     * PURPOSE:
-     * This endpoint proxies status polling requests to the Magic Auth server.
-     * It's used during desktop QR code authentication to check if the user
-     * has completed authentication on their mobile device.
-     * 
-     * WHY USE A PROXY:
-     * 1. CORS Avoidance: Browser security blocks direct cross-origin requests
-     *    to Magic Auth servers. This proxy runs on the same origin as your app.
-     * 2. Developer Debugging: Requests appear in your server logs, making it
-     *    easier to debug authentication flows during development.
-     * 3. Environment Flexibility: Easily switch between prod/staging/dev
-     *    environments using GLIDE_API_BASE_URL env variable.
-     * 
-     * ALTERNATIVE - DIRECT CALLS:
-     * You can skip this proxy by NOT configuring 'polling' in the SDK:
-     * 
-     *   // In your frontend SDK config, remove or comment out:
-     *   // polling: '/api/phone-auth/status'
-     *   
-     * When 'polling' is not set, the SDK will:
-     * 1. First try using the status_url from the prepare response
-     * 2. Fall back to calling Magic Auth's public endpoint directly:
-     *    https://api.glideidentity.app/public/status/{sessionId}
-     * 
-     * Note: Direct calls may have CORS issues in some environments.
+     * Uses the stored status_url from the prepare response for polling.
+     * This ensures we use the exact URL provided by the API.
      */
     @GetMapping("/phone-auth/status/{sessionId}")
     public ResponseEntity<?> getStatus(@PathVariable String sessionId) {
+        // Get the stored status URL from prepare response
+        Optional<String> statusUrlOpt = sessionStore.getStatusUrl(sessionId);
+        
+        if (statusUrlOpt.isEmpty()) {
+            String sessionPreview = sessionId.length() > 8 
+                ? sessionId.substring(0, 8) + "..." 
+                : sessionId;
+            log.warn("[Status Proxy] No stored status URL for session: {}", sessionPreview);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "SESSION_NOT_FOUND",
+                "message", "Session not found. It may have expired or prepare was not called."
+            ));
+        }
+
+        String sessionPreview = sessionId.length() > 8 
+            ? sessionId.substring(0, 8) + "..." 
+            : sessionId;
+        log.info("[Status Proxy] Polling session: {}", sessionPreview);
+
         try {
-            log.info("[Status Proxy] Fetching status for session: {}", sessionId);
-            
-            // Create HTTP client
             java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
             
-            // Use the pre-loaded base URL (from .env or environment)
-            String url = glideApiBaseUrl + "/public/status/" + sessionId;
-            log.info("[Status Proxy] Using URL: {}", url);
-            
-            java.net.http.HttpRequest.Builder requestBuilder = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create(url))
-                .header("Accept", "application/json");
-            
-            // Add developer header if configured
-            if (glideDevEnv != null && !glideDevEnv.isEmpty()) {
-                requestBuilder.header("developer", glideDevEnv);
-                log.info("[Status Proxy] Adding developer header: {}", glideDevEnv);
-            }
-            
-            java.net.http.HttpRequest request = requestBuilder.GET().build();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create(statusUrlOpt.get()))
+                .header("Accept", "application/json")
+                .GET()
+                .build();
             
             java.net.http.HttpResponse<String> response = httpClient.send(request, 
                 java.net.http.HttpResponse.BodyHandlers.ofString());
@@ -200,19 +215,17 @@ public class PhoneAuthController {
                 return ResponseEntity.status(response.statusCode()).body(response.body());
             }
             
-            // Parse and return the JSON response
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             Object jsonResponse = mapper.readValue(response.body(), Object.class);
-            log.info("[Status Proxy] Status response: {}", jsonResponse);
             
             return ResponseEntity.ok(jsonResponse);
             
         } catch (Exception e) {
             log.error("[Status Proxy] Error:", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "error", "Status check failed",
+                "error", "STATUS_CHECK_FAILED",
                 "message", e.getMessage()
             ));
         }
     }
-} 
+}
