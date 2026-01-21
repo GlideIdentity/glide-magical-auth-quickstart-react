@@ -256,13 +256,18 @@ function App() {
       
       // Log the invocation report result (fire-and-forget, but log for debugging)
       if (result.invocationReport) {
-        result.invocationReport.then((report) => {
-          console.log('[Granular] 📊 Invocation Report:', report);
-          addDebugLog(report.success ? 'success' : 'error', 
-            `ASR Report: ${report.success ? 'Success' : 'Failed'}`, 
-            report
-          );
-        });
+        result.invocationReport
+          .then((report) => {
+            console.log('[Granular] 📊 Invocation Report:', report);
+            addDebugLog(report.success ? 'success' : 'error', 
+              `ASR Report: ${report.success ? 'Success' : 'Failed'}`, 
+              report
+            );
+          })
+          .catch((err) => {
+            console.warn('[Granular] ⚠️ Invocation report failed:', err);
+            addDebugLog('error', 'ASR Report failed to send', { error: err.message });
+          });
       }
       
       // For Link/Desktop strategies, show polling UI while waiting

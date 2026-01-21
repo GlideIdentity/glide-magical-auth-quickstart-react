@@ -15,15 +15,23 @@ interface SessionEntry {
 
 const sessionStore = new Map<string, SessionEntry>();
 
-// Cleanup expired sessions every minute
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of sessionStore.entries()) {
-    if (entry.expiresAt < now) {
-      sessionStore.delete(key);
+const CLEANUP_INTERVAL_MS = 60 * 1000;
+
+// Ensure only a single cleanup interval exists, even across hot-reloads
+const globalForSessionStore = globalThis as typeof globalThis & {
+  __sessionStoreCleanupInterval?: ReturnType<typeof setInterval>;
+};
+
+if (!globalForSessionStore.__sessionStoreCleanupInterval) {
+  globalForSessionStore.__sessionStoreCleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of sessionStore.entries()) {
+      if (entry.expiresAt < now) {
+        sessionStore.delete(key);
+      }
     }
-  }
-}, 60 * 1000);
+  }, CLEANUP_INTERVAL_MS);
+}
 
 /** Store a status URL for a session (5 minute TTL) */
 export function storeStatusUrl(sessionKey: string, statusUrl: string): void {
