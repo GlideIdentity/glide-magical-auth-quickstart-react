@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { usePhoneAuth, USE_CASE } from '@glideidentity/web-client-sdk/react';
+import { usePhoneAuth, USE_CASE } from '@glideidentity/glide-fe-sdk-web/react';
 import SdkConfigPanel from './components/SdkConfigPanel';
 import glideLogo from './assets/Glide-Logomark.svg';
 import './App.css';
@@ -69,6 +69,7 @@ function App() {
   } = usePhoneAuth({
     endpoints: {
       prepare: '/api/phone-auth/prepare',
+      reportInvocation: '/api/phone-auth/invoke',
       process: '/api/phone-auth/process',
       /**
        * Polling Endpoint Configuration
@@ -249,8 +250,25 @@ function App() {
       console.log('[Granular] Step 2: Invoke result:', {
         strategy: result.strategy,
         hasCancel: !!result.cancel,
-        session: result.session
+        session: result.session,
+        hasInvocationReport: !!result.invocationReport
       });
+      
+      // Log the invocation report result (fire-and-forget, but log for debugging)
+      if (result.invocationReport) {
+        result.invocationReport
+          .then((report) => {
+            console.log('[Granular] 📊 Invocation Report:', report);
+            addDebugLog(report.success ? 'success' : 'error', 
+              `ASR Report: ${report.success ? 'Success' : 'Failed'}`, 
+              report
+            );
+          })
+          .catch((err) => {
+            console.warn('[Granular] ⚠️ Invocation report failed:', err);
+            addDebugLog('error', 'ASR Report failed to send', { error: err.message });
+          });
+      }
       
       // For Link/Desktop strategies, show polling UI while waiting
       const needsPollingUI = result.strategy === 'link' || result.strategy === 'desktop';

@@ -7,8 +7,7 @@ Experience carrier-grade phone authentication in **2 minutes**. No SMS, no delay
 ### Prerequisites
 - **Node.js 18+** (required for frontend and Node.js backend)
 - Choose one backend option:
-  - **Go 1.21+** for Go backend (default)
-  - **Node.js 18+** for Node.js backend
+  - **Node.js 18+** for Node.js backend (default)
   - **Java 17+ & Gradle** for Java backend
 
 ### Setup Steps
@@ -20,14 +19,12 @@ cd glide-magic-auth-quickstart-react
 
 # 2. Install dependencies
 npm install
-# This automatically downloads Go dependencies if Go is installed
 
 # 3. Copy environment variables
 cp env.example .env
 
-# 4. (Optional) Add your API key to .env
-# Edit .env and add your GLIDE_API_KEY if you have one
-# The demo key works out-of-the-box for testing
+# 4. Add your OAuth2 credentials to .env
+# Edit .env and add your GLIDE_CLIENT_ID and GLIDE_CLIENT_SECRET
 
 # 5. Start everything
 npm run dev
@@ -38,8 +35,7 @@ npm run dev
 > **Note:** The frontend runs on port 3000, backend API on port 3001
 > 
 > **Backend Options:**
-> - `npm run dev` - Uses Go backend (default)
-> - `npm run dev:node` - Uses Node.js backend
+> - `npm run dev` - Uses Node.js backend (default)
 > - `npm run dev:java` - Uses Java backend
 
 ## 🎮 What You Can Do
@@ -61,44 +57,63 @@ npm run dev
 1. **📲 Get Phone Number** - Retrieves the phone number from your SIM card
 2. **✓ Verify Phone Number** - Confirms you own a specific phone number
 
-## 🏗️ What's Inside
+## 🏗️ Project Structure
 
 ```
 magical-auth-quickstart-react/
-├── src/
-│   ├── App.jsx                    # React frontend app
-│   ├── App.css                    # Frontend styling
-│   ├── components/
-│   │   └── SdkConfigPanel.jsx     # SDK configuration panel
-│   └── main/java/                 # Java backend source
-│       └── com/glideidentity/
-│           ├── JavaServer.java    # Java entry point
-│           ├── controller/        # API endpoints
-│           └── service/           # Glide SDK integration
-├── server.go              # Go backend implementation
-├── server.ts              # Node.js backend implementation  
-├── build.gradle           # Java build configuration
-├── package.json           # NPM scripts and dependencies
-├── vite.config.js         # Frontend build config
-├── go.mod                 # Go dependencies
-└── env.example            # Environment variables template
+├── frontend/                          # React frontend
+│   ├── src/
+│   │   ├── App.jsx                    # Main React app
+│   │   ├── App.css                    # Styling
+│   │   ├── main.jsx                   # Entry point
+│   │   ├── components/
+│   │   │   └── SdkConfigPanel.jsx     # SDK config panel
+│   │   └── assets/
+│   │       └── Glide-Logomark.svg
+│   ├── index.html
+│   └── vite.config.js
+│
+├── server/                            # Backend servers
+│   ├── node/                          # Node.js backend (default)
+│   │   ├── index.ts                   # Express server
+│   │   └── session-store.ts           # Session management
+│   │
+│   └── java/                          # Java/Spring Boot backend
+│       ├── src/main/java/com/glideidentity/
+│       │   ├── JavaServer.java        # Entry point
+│       │   ├── controller/            # API endpoints
+│       │   └── service/               # Business logic
+│       ├── build.gradle
+│       ├── gradlew
+│       └── gradle/
+│
+├── package.json                       # NPM scripts & dependencies
+├── tsconfig.json                      # TypeScript config
+├── env.example                        # Environment template
+└── README.md
 ```
 
-**Three Backend Options:**
-- **Go** (`server.go`) - High-performance, compiled backend
-- **Node.js** (`server.ts`) - JavaScript/TypeScript backend using `@glideidentity/glide-sdk`
-- **Java** (`src/main/java/`) - Spring Boot backend using `glide-sdk-java`
+**Two Backend Options - Same API:**
+| Backend | Location | Language |
+|---------|----------|----------|
+| **Node.js** | `server/node/` | TypeScript + Express |
+| **Java** | `server/java/` | Spring Boot |
 
-## 🔧 Want Your Own API Key?
+> **Note:** Go backend support coming soon.
 
-The quickstart works out-of-the-box with our demo server. To use your own credentials:
+## 🔧 Configuration
 
-1. Get your API key from [Glide Dashboard](https://docs.glideidentity.com/)
-2. Create `.env` file:
+Create a `.env` file with your OAuth2 credentials:
+
 ```env
-GLIDE_API_KEY=your_api_key_here
+GLIDE_CLIENT_ID=your_client_id_here
+GLIDE_CLIENT_SECRET=your_client_secret_here
+
+# Optional: Enable debug logging
+GLIDE_DEBUG=true
 ```
-3. Restart the server - it'll use your key automatically!
+
+Get your credentials from [Glide Dashboard](https://docs.glideidentity.com/)
 
 ## 👀 See What's Happening
 
@@ -121,81 +136,35 @@ GLIDE_API_KEY=your_api_key_here
 **Step 2: Browser Prompt** → Secure carrier verification  
 **Step 3: Process** → Get the verified result
 
-## 🎨 Quick Customizations
-
-### Change Carrier (for Get Phone Number)
-```javascript
-// In src/App.jsx
-plmn: { mcc: '310', mnc: '260' }  // T-Mobile (default)
-plmn: { mcc: '310', mnc: '004' }  // Verizon
-plmn: { mcc: '310', mnc: '410' }  // AT&T
-```
-
-### Customize Consent Text
-```javascript
-consent_data: {
-  consent_text: 'Your custom message',
-  policy_link: 'https://yoursite.com/privacy',
-  policy_text: 'Your Policy'
-}
-```
 
 ### Available Scripts
 
-This quickstart supports **three backend options** - choose the one that matches your stack:
+This quickstart supports **two backend options** - choose the one that matches your stack:
 
 ```bash
 # Quick start options
-npm run dev              # React + Go backend (default)
-npm run dev:node        # React + Node.js backend  
-npm run dev:java        # React + Java backend
+npm run dev              # React + Node.js backend (default)
+npm run dev:node         # React + Node.js backend  
+npm run dev:java         # React + Java backend
 
 # Run components separately
-npm run dev:react       # Frontend only (port 3000)
-npm run dev:go         # Go backend only (port 3001)
-npm run server:node    # Node.js backend only (port 3001)
-npm run server:java    # Java backend only (port 3001)
+npm run dev:react        # Frontend only (port 3000)
+npm run server:node      # Node.js backend only (port 3001)
+npm run server:java      # Java backend only (port 3001)
 
 # Build commands
-npm run build          # Build frontend
-npm run build:server   # Build Node.js server
-npm run server:go:build    # Build Go server
-npm run server:java:build  # Build Java server
-npm run build:all      # Build everything
+npm run build            # Build frontend
+npm run build:server     # Build Node.js server
+npm run server:java:build   # Build Java server
 ```
 
 ### Backend Port
 ```bash
 # Default is 3001 for backend API, 3000 for frontend
-PORT=3001 npm run dev:go
+PORT=3001 npm run dev
 ```
 
-## 📱 Browser Requirements
 
-Works on:
-- **Chrome/Edge 128+** on Android ✅
-- **Chrome/Edge Desktop** (with phone nearby) ✅
-- **Safari** (coming soon) 🔜
-
-## 🤔 Common Questions
-
-**"Browser not supported"**
-→ Use Chrome/Edge 128+ on Android or desktop
-
-**"401 Unauthorized"**  
-→ Check your API key in `.env`
-
-**"PLMN required"**
-→ Already handled! Default is T-Mobile USA
-
-**"Cannot connect to server"**
-→ Make sure backend is running on port 3001 (starts automatically with `npm run dev`)
-
-**"Go/Java/Gradle not found"**
-→ Choose a different backend:
-  - No Go? Use `npm run dev:node`
-  - No Java/Gradle? Use `npm run dev:node` or `npm run dev`
-  - No special requirements? Use `npm run dev:node`
 
 ## 🚀 What's Next?
 
@@ -203,7 +172,7 @@ Now that you've seen it work:
 
 1. **Try both modes** - Toggle between High Level and Granular
 2. **Check the console** - See all the API calls
-3. **Look at the code** - Frontend in `src/App.jsx`, backend in `server.go`/`server.ts`/`JavaServer.java`
+3. **Look at the code** - Frontend in `frontend/src/`, backend in `server/`
 4. **Integrate into your app** - Copy the patterns you need
 
 ## 📚 Resources
@@ -219,7 +188,7 @@ Now that you've seen it work:
 ## 🌟 Why React?
 
 - **Modern React** - Hooks and functional components
-- **Three backend options** - Choose Go, Node.js, or Java
+- **Two backend options** - Choose Node.js or Java
 - **React hook** - Uses `usePhoneAuth` from `@glideidentity/web-client-sdk/react`
 - **TypeScript support** - Type-safe development
 

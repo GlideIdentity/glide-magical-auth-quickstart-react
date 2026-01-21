@@ -34,8 +34,8 @@ dependencies {
     // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'
     
-    // Glide SDK - published to Maven Central
-    implementation 'com.glideidentity:glide-be-sdk-java:4.1.0'
+    // Glide SDK - OAuth2 authentication
+    implementation 'com.glideidentity:glide-be-sdk-java:5.0.0'
     
     // JSON processing
     implementation 'com.fasterxml.jackson.core:jackson-databind'

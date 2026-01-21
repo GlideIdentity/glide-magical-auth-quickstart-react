@@ -19,9 +19,10 @@ build
 bin/
 .idea
 .vscode
+.DS_Store
 
-# Go binaries and build outputs
-server
+# Go binaries and build outputs (compiled binaries only, not source)
+/server-go
 server-*
 *.exe
-vendor/ 
+vendor/

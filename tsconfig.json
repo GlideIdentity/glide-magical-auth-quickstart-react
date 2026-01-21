@@ -4,7 +4,7 @@
     "module": "ESNext",
     "lib": ["ES2020"],
     "outDir": "./dist",
-    "rootDir": "./",
+    "rootDir": "./server/node",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -21,13 +21,12 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": [
-    "server.ts",
-    "**/*.ts"
+    "server/node/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "src/**/*"
+    "frontend"
   ],
   "ts-node": {
     "esm": true,
