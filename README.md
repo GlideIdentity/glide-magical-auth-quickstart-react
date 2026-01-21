@@ -7,8 +7,7 @@ Experience carrier-grade phone authentication in **2 minutes**. No SMS, no delay
 ### Prerequisites
 - **Node.js 18+** (required for frontend and Node.js backend)
 - Choose one backend option:
-  - **Go 1.21+** for Go backend (default)
-  - **Node.js 18+** for Node.js backend
+  - **Node.js 18+** for Node.js backend (default)
   - **Java 17+ & Gradle** for Java backend
 
 ### Setup Steps
@@ -20,7 +19,6 @@ cd glide-magic-auth-quickstart-react
 
 # 2. Install dependencies
 npm install
-# This automatically downloads Go dependencies if Go is installed
 
 # 3. Copy environment variables
 cp env.example .env
@@ -37,8 +35,7 @@ npm run dev
 > **Note:** The frontend runs on port 3000, backend API on port 3001
 > 
 > **Backend Options:**
-> - `npm run dev` - Uses Go backend (default)
-> - `npm run dev:node` - Uses Node.js backend
+> - `npm run dev` - Uses Node.js backend (default)
 > - `npm run dev:java` - Uses Java backend
 
 ## 🎮 What You Can Do
@@ -77,15 +74,9 @@ magical-auth-quickstart-react/
 │   └── vite.config.js
 │
 ├── server/                            # Backend servers
-│   ├── node/                          # Node.js backend
+│   ├── node/                          # Node.js backend (default)
 │   │   ├── index.ts                   # Express server
 │   │   └── session-store.ts           # Session management
-│   │
-│   ├── go/                            # Go backend
-│   │   ├── main.go                    # HTTP server
-│   │   ├── session_store.go           # Session management
-│   │   ├── go.mod
-│   │   └── go.sum
 │   │
 │   └── java/                          # Java/Spring Boot backend
 │       ├── src/main/java/com/glideidentity/
@@ -102,12 +93,13 @@ magical-auth-quickstart-react/
 └── README.md
 ```
 
-**Three Backend Options - Same API:**
+**Two Backend Options - Same API:**
 | Backend | Location | Language |
 |---------|----------|----------|
-| **Go** | `server/go/` | High-performance compiled |
 | **Node.js** | `server/node/` | TypeScript + Express |
 | **Java** | `server/java/` | Spring Boot |
+
+> **Note:** Go backend support coming soon.
 
 ## 🔧 Configuration
 
@@ -147,32 +139,29 @@ Get your credentials from [Glide Dashboard](https://docs.glideidentity.com/)
 
 ### Available Scripts
 
-This quickstart supports **three backend options** - choose the one that matches your stack:
+This quickstart supports **two backend options** - choose the one that matches your stack:
 
 ```bash
 # Quick start options
-npm run dev              # React + Go backend (default)
-npm run dev:node        # React + Node.js backend  
-npm run dev:java        # React + Java backend
+npm run dev              # React + Node.js backend (default)
+npm run dev:node         # React + Node.js backend  
+npm run dev:java         # React + Java backend
 
 # Run components separately
-npm run dev:react       # Frontend only (port 3000)
-npm run server:go       # Go backend only (port 3001)
-npm run server:node     # Node.js backend only (port 3001)
-npm run server:java     # Java backend only (port 3001)
+npm run dev:react        # Frontend only (port 3000)
+npm run server:node      # Node.js backend only (port 3001)
+npm run server:java      # Java backend only (port 3001)
 
 # Build commands
-npm run build           # Build frontend
-npm run build:server    # Build Node.js server
-npm run server:go:build # Build Go server
-npm run server:java:build  # Build Java server
-npm run build:all       # Build everything
+npm run build            # Build frontend
+npm run build:server     # Build Node.js server
+npm run server:java:build   # Build Java server
 ```
 
 ### Backend Port
 ```bash
 # Default is 3001 for backend API, 3000 for frontend
-PORT=3001 npm run dev:go
+PORT=3001 npm run dev
 ```
 
 
@@ -199,7 +188,7 @@ Now that you've seen it work:
 ## 🌟 Why React?
 
 - **Modern React** - Hooks and functional components
-- **Three backend options** - Choose Go, Node.js, or Java
+- **Two backend options** - Choose Node.js or Java
 - **React hook** - Uses `usePhoneAuth` from `@glideidentity/web-client-sdk/react`
 - **TypeScript support** - Type-safe development
 

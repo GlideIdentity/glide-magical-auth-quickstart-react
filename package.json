@@ -1,24 +1,19 @@
 {
   "name": "magical-auth-quickstart-react",
   "version": "1.0.0",
-  "description": "Magical Auth Quickstart for React with multi-backend support (Node.js, Go, Java)",
+  "description": "Magical Auth Quickstart for React with multi-backend support (Node.js, Java)",
   "type": "module",
   "scripts": {
-    "dev": "concurrently --raw \"npm run server:go\" \"npm run dev:react\"",
-    "dev:go": "concurrently --raw \"npm run server:go\" \"npm run dev:react\"",
+    "dev": "concurrently --raw \"npm run server:node\" \"npm run dev:react\"",
     "dev:node": "concurrently --raw \"npm run server:node\" \"npm run dev:react\"",
     "dev:java": "concurrently --raw \"npm run server:java\" \"npm run dev:react\"",
     "dev:react": "vite --config frontend/vite.config.js",
-    "server:go": "cd server/go && go mod download && go run .",
     "server:node": "tsx watch server/node/index.ts",
     "server:java": "dotenv -e .env -- sh -c 'cd server/java && ./gradlew bootRun'",
     "server:java:build": "cd server/java && ./gradlew build",
     "server:java:clean": "cd server/java && ./gradlew clean",
-    "server:go:build": "cd server/go && go build -o ../../dist/server-go .",
-    "postinstall": "cd server/go && go mod download 2>/dev/null || echo 'Go not found - use npm run dev:node instead'",
     "build": "vite build --config frontend/vite.config.js",
     "build:server": "tsc",
-    "build:all": "npm run build && npm run build:server && npm run server:go:build",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
