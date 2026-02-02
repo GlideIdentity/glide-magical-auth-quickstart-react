@@ -26,3 +26,6 @@ bin/
 server-*
 *.exe
 vendor/
+
+# Internal QA test environment (not for public repo)
+test-external-developer/

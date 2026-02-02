@@ -30,6 +30,9 @@ import { storeStatusUrl, getStatusUrl, extractStatusUrl } from './session-store'
 // When run via npm scripts, cwd is project root; when run directly, we're in server/node/
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
+// Default T-Mobile US PLMN (used when client doesn't provide one)
+const DEFAULT_PLMN = { mcc: '310', mnc: '260' };
+
 // =============================================================================
 // Initialize Glide SDK
 // =============================================================================
@@ -86,10 +89,19 @@ app.post('/api/phone-auth/prepare', async (req: Request, res: Response): Promise
       return;
     }
 
-    console.log('📱 Prepare request:', { use_case: req.body.use_case });
+    const prepareRequest = { ...req.body };
+    
+    // Apply default PLMN for GetPhoneNumber if not provided
+    const isGetPhoneNumber = prepareRequest.use_case === UseCase.GET_PHONE_NUMBER || prepareRequest.use_case === 'GetPhoneNumber';
+    if (isGetPhoneNumber && !prepareRequest.plmn) {
+      prepareRequest.plmn = DEFAULT_PLMN;
+      console.log('📶 PLMN not provided in request, defaulting to T-Mobile US (MCC: 310, MNC: 260)');
+    }
+
+    console.log('📱 Prepare request:', { use_case: prepareRequest.use_case });
     
     // Prepare the authentication request using the SDK
-    const response = await glide.magicalAuth.prepare(req.body as PrepareRequest);
+    const response = await glide.magicalAuth.prepare(prepareRequest as PrepareRequest);
     
     console.log('✅ Prepare success:', { 
       strategy: response.authentication_strategy,

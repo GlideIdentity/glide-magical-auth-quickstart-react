@@ -112,7 +112,7 @@ function App() {
   };
   
   useEffect(() => {
-    console.log('🚀 Magical Auth Quick Start - React (SDK v6 with usePhoneAuth hook)');
+    console.log('🚀 Magical Auth Quick Start - React (SDK v2 with usePhoneAuth hook)');
     addDebugLog('info', 'usePhoneAuth hook initialized', { isSupported });
     addDebugLog('info', 'SDK Configuration loaded', sdkConfig);
   }, []);

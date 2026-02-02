@@ -17,9 +17,9 @@ public class JavaServer {
     public static void main(String[] args) {
         SpringApplication.run(JavaServer.class, args);
         
-        // Log startup information
-        System.out.println("🚀 Java server running on http://localhost:" + 
-                          System.getProperty("server.port", "3001"));
+        // Log startup information (use PORT env var to match application.properties)
+        String port = System.getenv("PORT") != null ? System.getenv("PORT") : "3001";
+        System.out.println("🚀 Java server running on http://localhost:" + port);
         
         // Check both system properties and environment variables for OAuth2 credentials
         boolean hasClientId = System.getProperty("GLIDE_CLIENT_ID") != null || 
