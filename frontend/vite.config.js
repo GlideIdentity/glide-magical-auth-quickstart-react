@@ -11,8 +11,14 @@ export default defineConfig({
   server: {
     host: true,
     port: 3000,
+    // Allow all hosts so tunnels (ngrok, cloudflared) and deployed previews work
+    allowedHosts: true,
     proxy: {
       '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true
+      },
+      '/glide-complete': {
         target: 'http://localhost:3001',
         changeOrigin: true
       }

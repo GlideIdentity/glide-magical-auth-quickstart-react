@@ -1,0 +1,65 @@
+# Render Blueprint — Magical Auth Quickstart (React)
+#
+# Deploys the frontend as a Static Site and the backend as a Web Service.
+# Supports Node.js, Go, and Java backends.
+#
+# Usage:
+#   1. Copy this file to the repo root: cp deployments/render.yaml render.yaml
+#   2. Push to GitHub
+#   3. In Render Dashboard: New > Blueprint > connect your repo
+#   4. Set environment variables (GLIDE_CLIENT_ID, GLIDE_CLIENT_SECRET)
+#
+# To use a different backend, change the buildCommand and startCommand below.
+
+services:
+  # Backend API server (Node.js by default)
+  - type: web
+    name: quickstart-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npx tsx server/node/index.ts
+    envVars:
+      - key: GLIDE_CLIENT_ID
+        sync: false
+      - key: GLIDE_CLIENT_SECRET
+        sync: false
+      - key: GLIDE_DEBUG
+        value: "true"
+      - key: PORT
+        value: "3001"
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: "https://quickstart-frontend.onrender.com"
+    # Uncomment below for Go backend instead:
+    # runtime: go
+    # buildCommand: cd server/go && go build -o /opt/render/project/server .
+    # startCommand: /opt/render/project/server
+    #
+    # Uncomment below for Java backend instead:
+    # runtime: docker
+    # dockerfilePath: deployments/Dockerfile.java
+    # (You would need to create this Dockerfile — see deployments/README.md)
+
+  # Frontend static site
+  - type: web
+    name: quickstart-frontend
+    runtime: static
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      # VITE_API_URL is intentionally empty — the frontend proxy rewrites below
+      # route /api/* to the backend service, keeping everything same-origin.
+      # This is required for device binding cookies (HttpOnly, SameSite=Lax).
+      - key: VITE_API_URL
+        value: ""
+    routes:
+      # Proxy API calls and completion redirect to the backend service
+      - type: rewrite
+        source: /api/*
+        destination: https://quickstart-api.onrender.com/api/*
+      - type: rewrite
+        source: /glide-complete
+        destination: https://quickstart-api.onrender.com/glide-complete

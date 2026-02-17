@@ -67,6 +67,11 @@ public class GlideService {
                 request.getPlmn().getMnc()
             );
             builder.plmn(plmn);
+        } else if ("GET_PHONE_NUMBER".equals(request.getUseCase()) || "GetPhoneNumber".equals(request.getUseCase())) {
+            // Default to T-Mobile US PLMN when not provided (matches Node backend behavior).
+            // On real devices the frontend SDK provides the PLMN from the SIM card.
+            builder.plmn(new PLMN("310", "260"));
+            log.info("📶 PLMN not provided, defaulting to T-Mobile US (MCC: 310, MNC: 260)");
         }
         
         if (request.getConsentData() != null) {
@@ -97,7 +102,7 @@ public class GlideService {
      *         GetPhoneNumberResponse for GetPhoneNumber use case
      * @throws MagicalAuthError for authentication errors
      */
-    public Object processCredential(com.glideidentity.dto.PhoneAuthProcessRequest request) throws Exception {
+    public Object processCredential(com.glideidentity.dto.PhoneAuthProcessRequest request, String feCode) throws Exception {
         if (!initialized) {
             throw new IllegalStateException("Glide client not initialized. Check your credentials.");
         }
@@ -113,16 +118,39 @@ public class GlideService {
             var verifyRequest = new VerifyPhoneNumberRequest();
             verifyRequest.setCredential(request.getCredential());
             verifyRequest.setSession(sessionInfo);
+            if (feCode != null) {
+                verifyRequest.setFeCode(feCode);
+            }
             return glideClient.magicalAuth.verifyPhoneNumber(verifyRequest);
         } else if ("GetPhoneNumber".equals(request.getUseCase())) {
             var getRequest = new GetPhoneNumberRequest();
             getRequest.setCredential(request.getCredential());
             getRequest.setSession(sessionInfo);
+            if (feCode != null) {
+                getRequest.setFeCode(feCode);
+            }
             return glideClient.magicalAuth.getPhoneNumber(getRequest);
         } else {
-            // Let SDK handle invalid use cases
             throw new IllegalArgumentException("Invalid use_case: " + request.getUseCase());
         }
+    }
+
+    /**
+     * Complete a device-bound authentication session.
+     * Validates both binding codes and calls the aggregator's /complete endpoint.
+     *
+     * @param sessionKey session key from the prepare response
+     * @param feCode     the fe_code from the HttpOnly cookie
+     * @param aggCode    the agg_code from the redirect URL fragment
+     * @throws Exception if validation fails or the aggregator rejects the request
+     */
+    public void complete(String sessionKey, String feCode, String aggCode) throws Exception {
+        if (!initialized) {
+            throw new IllegalStateException("Glide client not initialized. Check your credentials.");
+        }
+
+        var request = new CompleteRequest(sessionKey, feCode, aggCode);
+        glideClient.magicalAuth.complete(request);
     }
 
     /**

@@ -20,7 +20,12 @@ import {
   UseCase, 
   ErrorCode,
   MagicalAuthError,
+  BINDING_COOKIE_MAX_AGE,
+  getBindingCookieName,
+  parseBindingCookie,
+  getCompletionPageHtml,
   type PrepareRequest,
+  type PrepareResult,
   type GetPhoneNumberRequest,
   type VerifyPhoneNumberRequest,
 } from '@glideidentity/glide-be-sdk-node';
@@ -51,8 +56,12 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
+// Device binding requires credentials: 'include' for HttpOnly cookie passthrough.
+// CORS_ORIGIN must match the frontend origin exactly (credentials mode rejects '*').
+const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
+app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json());
+
 
 // =============================================================================
 // Health Check Endpoint
@@ -101,7 +110,7 @@ app.post('/api/phone-auth/prepare', async (req: Request, res: Response): Promise
     console.log('📱 Prepare request:', { use_case: prepareRequest.use_case });
     
     // Prepare the authentication request using the SDK
-    const response = await glide.magicalAuth.prepare(prepareRequest as PrepareRequest);
+    const response = await glide.magicalAuth.prepare(prepareRequest as PrepareRequest) as PrepareResult;
     
     console.log('✅ Prepare success:', { 
       strategy: response.authentication_strategy,
@@ -113,8 +122,26 @@ app.post('/api/phone-auth/prepare', async (req: Request, res: Response): Promise
     if (statusUrl && response.session?.session_key) {
       storeStatusUrl(response.session.session_key, statusUrl);
     }
-    
-    res.json(response);
+
+    // Device binding: set HttpOnly cookie with fe_code for link strategy.
+    // Uses Express res.cookie() (framework-native) to avoid raw header injection vectors.
+    const sessionKey = response.session?.session_key;
+    if (response.feCode && sessionKey) {
+      const isSecure = process.env.NODE_ENV === 'production' || req.headers['x-forwarded-proto'] === 'https';
+      const cookieName = getBindingCookieName(sessionKey);
+      res.cookie(cookieName, response.feCode.toLowerCase(), {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isSecure,
+        path: '/',
+        maxAge: BINDING_COOKIE_MAX_AGE * 1000, // Express uses milliseconds
+      });
+      console.log('🔒 Device binding cookie set for link strategy');
+    }
+
+    // Strip feCode from the response — it must NEVER be sent to the client in the body
+    const { feCode: _stripped, ...clientResponse } = response;
+    res.json(clientResponse);
   } catch (error) {
     console.error('❌ Prepare error:', error);
     
@@ -184,27 +211,37 @@ app.post('/api/phone-auth/process', async (req: Request, res: Response): Promise
       return;
     }
 
+    // Read the device binding code from the HttpOnly cookie set during prepare.
+    // This extends device binding verification to the process step (link protocol only).
+    const sessionKey = session?.session_key;
+    const feCode = sessionKey ? parseBindingCookie(req.headers.cookie, sessionKey) : undefined;
+    if (feCode) {
+      console.log('🔒 Device binding cookie found for process step');
+    }
+
     let result;
 
     if (use_case === UseCase.GET_PHONE_NUMBER || use_case === 'GetPhoneNumber') {
-      // Get the phone number using the SDK
       result = await glide.magicalAuth.getPhoneNumber({
         session,
-        credential
+        credential,
+        ...(feCode && { fe_code: feCode }),
       } as GetPhoneNumberRequest);
       
       console.log('✅ GetPhoneNumber success:', { 
         phone_number: result.phone_number?.substring(0, 6) + '****' 
       });
     } else if (use_case === UseCase.VERIFY_PHONE_NUMBER || use_case === 'VerifyPhoneNumber') {
-      // Verify the phone number using the SDK
       result = await glide.magicalAuth.verifyPhoneNumber({
         session,
-        credential
+        credential,
+        ...(feCode && { fe_code: feCode }),
       } as VerifyPhoneNumberRequest);
       
       console.log('✅ VerifyPhoneNumber success:', { 
-        verified: result.verified 
+        verified: result.verified,
+        has_sim_swap: !!result.sim_swap,
+        has_device_swap: !!result.device_swap,
       });
     } else {
       res.status(400).json({
@@ -214,6 +251,9 @@ app.post('/api/phone-auth/process', async (req: Request, res: Response): Promise
       });
       return;
     }
+
+    // The device binding cookie auto-expires (5 min Max-Age), so explicit clearing
+    // is optional. Developers can clear it here for immediate cleanup if desired.
 
     res.json(result);
   } catch (error) {
@@ -298,6 +338,100 @@ app.get('/api/phone-auth/status/:sessionId', async (req: Request, res: Response)
 });
 
 // =============================================================================
+// Device Binding: Completion Redirect Page
+// =============================================================================
+
+/**
+ * Completion redirect page — served after carrier authentication.
+ * 
+ * The aggregator redirects to this URL with agg_code and session_key in the
+ * URL fragment. This page extracts them, writes a localStorage signal for the
+ * original tab, and POSTs to /api/phone-auth/complete (the browser auto-attaches
+ * the _glide_bind HttpOnly cookie).
+ */
+app.get('/glide-complete', (_req: Request, res: Response) => {
+  try {
+    const html = getCompletionPageHtml('/api/phone-auth/complete');
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.send(html);
+  } catch (error) {
+    console.error('❌ Failed to generate completion page:', error);
+    res.status(500).send('Internal server error');
+  }
+});
+
+/**
+ * Complete endpoint — called by the completion redirect page.
+ * 
+ * Reads fe_code from the _glide_bind HttpOnly cookie (auto-attached by the browser),
+ * agg_code and session_key from the POST body, and forwards all three to the
+ * aggregator's /complete endpoint. Returns 204 on success.
+ */
+app.post('/api/phone-auth/complete', async (req: Request, res: Response): Promise<void> => {
+  const { session_key, agg_code } = req.body;
+
+  if (!session_key || !agg_code) {
+    res.status(400).json({
+      error: ErrorCode.MISSING_REQUIRED_FIELD,
+      message: 'session_key and agg_code are required',
+      status: 400
+    });
+    return;
+  }
+
+  // Read fe_code from the session-scoped HttpOnly cookie (set during prepare)
+  const rawCookies = req.headers.cookie;
+  const feCode = parseBindingCookie(rawCookies, session_key);
+
+  if (!feCode) {
+    console.error('❌ Complete: device binding cookie missing or invalid');
+    res.status(403).json({
+      error: 'MISSING_BINDING_COOKIE',
+      message: 'Device binding cookie is missing. The prepare and complete must happen in the same browser.',
+      status: 403
+    });
+    return;
+  }
+
+  try {
+    console.log('🔐 Complete request for session:', session_key.substring(0, 8) + '...');
+
+    await glide.magicalAuth.complete({
+      session_key,
+      fe_code: feCode,
+      agg_code,
+    });
+
+    console.log('✅ Complete succeeded');
+
+    // The device binding cookie is intentionally not cleared here — it is needed
+    // by the process step (/verify-phone-number or /get-phone-number) for continued
+    // device binding validation. The cookie auto-expires after 5 minutes.
+    res.status(204).send();
+  } catch (error) {
+    console.error('❌ Complete error:', error);
+
+    if (error instanceof MagicalAuthError) {
+      res.status(error.status || 500).json({
+        error: error.code,
+        message: error.message,
+        status: error.status
+      });
+      return;
+    }
+
+    res.status(500).json({
+      error: ErrorCode.INTERNAL_SERVER_ERROR,
+      message: error instanceof Error ? error.message : 'An unexpected error occurred',
+      status: 500,
+    });
+  }
+});
+
+// =============================================================================
 // Start Server
 // =============================================================================
 
@@ -315,5 +449,7 @@ app.listen(PORT, () => {
   console.log('  POST /api/phone-auth/prepare');
   console.log('  POST /api/phone-auth/invoke');
   console.log('  POST /api/phone-auth/process');
-  console.log('  GET  /api/phone-auth/status/:sessionId\n');
+  console.log('  GET  /api/phone-auth/status/:sessionId');
+  console.log('  GET  /glide-complete                    (device binding redirect page)');
+  console.log('  POST /api/phone-auth/complete           (device binding completion)\n');
 });

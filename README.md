@@ -177,14 +177,60 @@ PORT=3001 npm run dev:go
 
 
 
+## 📱 Test on Mobile
+
+### What works from localhost
+
+| Strategy | Platform | Localhost | Public URL Required |
+|----------|----------|-----------|---------------------|
+| **TS43** | Android (Digital Credentials API) | Yes | No — `aud` validation works on any origin |
+| **Desktop** | QR code scan | Yes | No — uses polling |
+| **Link** | iOS (App Clips) | No | **Yes** — device binding cookie requires same domain as redirect |
+
+**TS43 and Desktop flows work from `http://localhost:3000`** — no deployment needed.
+
+**Link flow requires a public HTTPS URL** because the completion redirect page (`/glide-complete`) must be on the same domain that set the `_glide_bind_*` HttpOnly cookie. The aggregator redirects the browser to your registered `completion_redirect_url` after carrier auth, and the cookie is only sent if the domain matches.
+
+### Deploy for Link Protocol Testing
+
+| Platform | Backends | Setup Time | Free Tier |
+|----------|----------|------------|-----------|
+| **Render.com** | Node.js, Go, Java | ~5 min | 750 hrs/month |
+| **Vercel** | Node.js, Go | ~3 min | Generous |
+| **ngrok** | All (local tunnel) | ~1 min | Free (URL changes) |
+
+### Fastest: ngrok
+
+```bash
+# 1. Start locally
+npm run dev:node
+
+# 2. In another terminal
+ngrok http 3000
+
+# 3. Open the ngrok HTTPS URL on your iOS device
+```
+
+### Production-like: Render or Vercel
+
+See **[deployments/README.md](deployments/README.md)** for step-by-step deployment guides.
+
+### Configuration
+
+The following settings are managed through the Glide developer portal alongside your OAuth2 credentials:
+
+- **`completion_redirect_url`** — Your deployed URL + `/glide-complete` (e.g., `https://your-app.com/glide-complete`). Required for the Link protocol's device binding flow.
+- **`allowed_origins`** (optional) — An array of web origins for TS43 `aud` (audience) validation (e.g., `["https://your-app.com"]`). If not set, `aud` validation is skipped and credentials are accepted from any origin.
+
 ## 🚀 What's Next?
 
 Now that you've seen it work:
 
 1. **Try both modes** - Toggle between High Level and Granular
-2. **Check the console** - See all the API calls
-3. **Look at the code** - Frontend in `frontend/src/`, backend in `server/`
-4. **Integrate into your app** - Copy the patterns you need
+2. **Test on mobile** - Deploy and try Link (iOS) or TS43 (Android) flows
+3. **Check the console** - See all the API calls
+4. **Look at the code** - Frontend in `frontend/src/`, backend in `server/`
+5. **Integrate into your app** - Copy the patterns you need
 
 ## 📚 Resources
 

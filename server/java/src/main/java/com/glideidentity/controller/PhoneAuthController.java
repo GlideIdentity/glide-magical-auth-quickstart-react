@@ -4,12 +4,20 @@ import com.glideidentity.dto.*;
 import com.glideidentity.service.GlideService;
 import com.glideidentity.service.SessionStoreService;
 import com.glideidentity.exception.MagicalAuthError;
+import com.glideidentity.core.Constants;
 import com.glideidentity.core.Types.PrepareResponse;
+import com.glideidentity.service.MagicalAuth;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 
@@ -25,14 +33,25 @@ public class PhoneAuthController {
         this.glideService = glideService;
         this.sessionStore = sessionStore;
     }
+    
+    /** Build a Set-Cookie header using Spring's ResponseCookie (framework-native, CRLF-safe). */
+    private static String buildBindingCookie(String sessionKey, String value, boolean secure, Duration maxAge) {
+        String cookieName = MagicalAuth.getBindingCookieName(sessionKey);
+        return ResponseCookie.from(cookieName, value)
+                .httpOnly(true)
+                .sameSite("Lax")
+                .secure(secure)
+                .path("/")
+                .maxAge(maxAge)
+                .build()
+                .toString();
+    }
 
     @PostMapping("/phone-auth/prepare")
-    public ResponseEntity<?> prepare(@RequestBody PrepareRequest request) {
+    public ResponseEntity<?> prepare(@RequestBody PrepareRequest request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         log.info("📱 Prepare request: { use_case: '{}' }", request.getUseCase());
 
         try {
-            // Response is always PrepareResponse for success
-            // Not eligible cases throw MagicalAuthError with CARRIER_NOT_ELIGIBLE
             PrepareResponse response = glideService.prepare(request);
             log.info("✅ Prepare success: { strategy: '{}', session_key: '{}' }",
                 response.getAuthenticationStrategy(), 
@@ -44,6 +63,22 @@ public class PhoneAuthController {
                     sessionStore.storeStatusUrl(response.getSession().getSessionKey(), statusUrl);
                 }
             });
+
+            // Device binding: set HttpOnly cookie with fe_code for link strategy.
+            // Each session gets its own cookie (_glide_bind_{sessionKey}), so parallel
+            // sessions and retries don't interfere. Old cookies expire via Max-Age.
+            if (response.getFeCode() != null && response.getSession() != null) {
+                boolean isSecure = "https".equals(httpRequest.getScheme())
+                        || "https".equals(httpRequest.getHeader("X-Forwarded-Proto"));
+                String sessionKey = response.getSession().getSessionKey();
+                httpResponse.addHeader(HttpHeaders.SET_COOKIE,
+                        buildBindingCookie(sessionKey, response.getFeCode().toLowerCase(), isSecure,
+                                Duration.ofSeconds(Constants.BINDING_COOKIE_MAX_AGE)));
+                log.info("🔒 Device binding cookie set for link strategy");
+
+                // feCode must never be sent to the client in the body
+                response.setFeCode(null);
+            }
             
             return ResponseEntity.ok(response);
         } catch (MagicalAuthError e) {
@@ -81,11 +116,28 @@ public class PhoneAuthController {
     }
 
     @PostMapping("/phone-auth/process")
-    public ResponseEntity<?> process(@RequestBody PhoneAuthProcessRequest request) {
+    public ResponseEntity<?> process(@RequestBody PhoneAuthProcessRequest request, HttpServletRequest httpRequest) {
         log.info("🔐 Process request: { use_case: '{}' }", request.getUseCase());
         
         try {
-            var result = glideService.processCredential(request);
+            // Read the device binding code from the HttpOnly cookie set during prepare.
+            // This extends device binding verification to the process step (link protocol only).
+            String sessionKey = request.getSessionKey();
+            String feCode = null;
+            String cookieHeader = httpRequest.getHeader("Cookie");
+            if (cookieHeader != null && sessionKey != null) {
+                feCode = MagicalAuth.parseBindingCookie(cookieHeader, sessionKey);
+            }
+            if (feCode != null) {
+                log.info("🔒 Device binding cookie found for process step");
+            }
+
+            var result = glideService.processCredential(request, feCode);
+            log.info("✅ Process success: { use_case: '{}' }", request.getUseCase());
+
+            // The device binding cookie auto-expires (5 min Max-Age), so explicit clearing
+            // is optional. Developers can clear it here for immediate cleanup if desired.
+
             return ResponseEntity.ok(result);
         } catch (MagicalAuthError e) {
             // Handle SDK errors properly (no reflection needed)
@@ -148,6 +200,93 @@ public class PhoneAuthController {
             // Log the error but NEVER fail the response with an error status code
             log.error("❌ [Invoke] Failed to report invocation: {}", e.getMessage());
             return ResponseEntity.ok(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
+    // ==================== Device Binding: Complete ====================
+
+    /**
+     * Complete endpoint — called by the completion redirect page.
+     * Reads fe_code from the HttpOnly cookie, agg_code from the body, and
+     * forwards all three to the aggregator's /complete endpoint.
+     */
+    @PostMapping("/phone-auth/complete")
+    public ResponseEntity<?> complete(@RequestBody Map<String, String> body, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+        String sessionKey = body.get("session_key");
+        String aggCode = body.get("agg_code");
+
+        if (sessionKey == null || aggCode == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "MISSING_REQUIRED_FIELD",
+                    "message", "session_key and agg_code are required"));
+        }
+
+        // Read fe_code from the HttpOnly cookie (set during prepare)
+        String feCode = null;
+        String cookieHeader = httpRequest.getHeader("Cookie");
+        if (cookieHeader != null) {
+            feCode = MagicalAuth.parseBindingCookie(cookieHeader, sessionKey);
+        }
+
+        if (feCode == null) {
+            log.error("❌ Complete: device binding cookie missing or invalid");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "error", "MISSING_BINDING_COOKIE",
+                    "message", "Device binding cookie is missing. The prepare and complete must happen in the same browser."));
+        }
+
+        try {
+            String sessionPreview = sessionKey.length() > 8 ? sessionKey.substring(0, 8) + "..." : sessionKey;
+            log.info("🔐 Complete request for session: {}", sessionPreview);
+
+            glideService.complete(sessionKey, feCode, aggCode);
+
+            log.info("✅ Complete succeeded");
+
+            // The device binding cookie is intentionally not cleared here — it is needed
+            // by the process step (/verify-phone-number or /get-phone-number) for continued
+            // device binding validation. The cookie auto-expires after 5 minutes.
+
+            return ResponseEntity.noContent().build();
+
+        } catch (MagicalAuthError e) {
+            log.error("❌ Complete MagicalAuthError: code={}, status={}, message={}", e.getCode(), e.getStatus(), e.getMessage());
+            return ResponseEntity.status(e.getStatus()).body(Map.of(
+                    "error", e.getCode(),
+                    "message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ Complete unexpected error:", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "error", "INTERNAL_ERROR",
+                    "message", "An unexpected error occurred"));
+        }
+    }
+
+    // ==================== Device Binding: Completion Redirect Page ====================
+
+    /**
+     * Completion redirect page — served after carrier authentication.
+     *
+     * The aggregator redirects to this URL with agg_code and session_key in the
+     * URL fragment. This page extracts them, writes a localStorage signal for the
+     * original tab, and POSTs to /api/phone-auth/complete (the browser auto-attaches
+     * the _glide_bind HttpOnly cookie).
+     */
+    @GetMapping("/glide-complete")
+    public ResponseEntity<String> glideComplete() {
+        try {
+            String html = MagicalAuth.getCompletionPageHtml("/api/phone-auth/complete");
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_TYPE, "text/html; charset=UTF-8")
+                    .header("X-Content-Type-Options", "nosniff")
+                    .header("X-Frame-Options", "DENY")
+                    .header("Referrer-Policy", "no-referrer")
+                    .body(html);
+        } catch (Exception e) {
+            log.error("❌ Failed to generate completion page:", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .header(HttpHeaders.CONTENT_TYPE, "text/html; charset=UTF-8")
+                    .body("Internal server error");
         }
     }
 

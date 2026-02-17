@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { usePhoneAuth, USE_CASE } from '@glideidentity/glide-fe-sdk-web/react';
 import SdkConfigPanel from './components/SdkConfigPanel';
+import ResultOverlay from './components/ResultOverlay';
 import glideLogo from './assets/Glide-Logomark.svg';
 import './App.css';
+
+// API base URL — empty in local dev (uses Vite proxy), set to backend URL when deployed
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 // Default SDK configuration values
 const defaultSdkConfig = {
@@ -68,9 +72,9 @@ function App() {
     isSupported
   } = usePhoneAuth({
     endpoints: {
-      prepare: '/api/phone-auth/prepare',
-      reportInvocation: '/api/phone-auth/invoke',
-      process: '/api/phone-auth/process',
+      prepare: `${API_BASE}/api/phone-auth/prepare`,
+      reportInvocation: `${API_BASE}/api/phone-auth/invoke`,
+      process: `${API_BASE}/api/phone-auth/process`,
       /**
        * Polling Endpoint Configuration
        * 
@@ -82,14 +86,13 @@ function App() {
        *    - Routes through your backend server
        *    - Better for debugging (see requests in server logs)
        *    - Avoids CORS issues
-       *    - Respects GLIDE_API_BASE_URL for environment switching
        * 
        * 2. DIRECT CALLS: Comment out or remove this line
        *    - SDK will use status_url from prepare response OR
        *    - Fall back to: https://api.glideidentity.app/public/status/
        *    - May have CORS issues in some environments
        */
-      polling: '/api/phone-auth/status',
+      polling: `${API_BASE}/api/phone-auth/status`,
     },
     debug: sdkConfig.debugMode,
   });
@@ -532,29 +535,32 @@ function App() {
               {!loading ? (
                 <span>{selectedFlow === 'verify' ? 'Verify Phone Number' : 'Get Phone Number'}</span>
               ) : (
-                <span>Processing...</span>
+                <span>Waiting for carrier verification...</span>
               )}
             </button>
+            
+            {loading && (
+              <button 
+                onClick={() => { resetHook(); startAuthentication(); }}
+                className="reset-button"
+                style={{ marginTop: '0.75rem', padding: '8px 20px' }}
+              >
+                Retry
+              </button>
+            )}
             
             {error && (
               <div className="error-message">
                 <div style={{ flex: 1 }}>
                   <strong>{error.code || 'Error'}</strong>
                   <p>{error.message}</p>
-                  <button onClick={resetApp} className="reset-button">Start Over</button>
+                  <button onClick={startAuthentication} className="step-button" style={{ marginTop: '0.5rem', padding: '8px 20px', fontSize: '14px' }}>Try Again</button>
                 </div>
               </div>
             )}
             
             {result && (
-              <div className="result-success">
-                <h3>Authentication Successful!</h3>
-                <div className="result-details">
-                  <p><strong>Phone Number:</strong> {result.phone_number}</p>
-                  {result.verified !== undefined && <p><strong>Verified:</strong> {result.verified ? 'Yes' : 'No'}</p>}
-                  {result.aud && <p><strong>Audience:</strong> {result.aud}</p>}
-                </div>
-              </div>
+              <ResultOverlay result={result} onDismiss={resetApp} />
             )}
           </section>
         )}
@@ -660,14 +666,7 @@ function App() {
             )}
             
             {stepThreeResp && (
-              <div className="result-success">
-                <h3>Authentication Successful!</h3>
-                <div className="result-details">
-                  <p><strong>Phone Number:</strong> {stepThreeResp.phone_number}</p>
-                  {stepThreeResp.verified !== undefined && <p><strong>Verified:</strong> {stepThreeResp.verified ? 'Yes' : 'No'}</p>}
-                  {stepThreeResp.aud && <p><strong>Audience:</strong> {stepThreeResp.aud}</p>}
-                </div>
-              </div>
+              <ResultOverlay result={stepThreeResp} onDismiss={resetApp} />
             )}
           </section>
         )}
