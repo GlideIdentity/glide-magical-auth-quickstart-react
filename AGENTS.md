@@ -12,9 +12,9 @@ Frontend (React + Vite, port 3000)
   └── In production: VITE_API_URL env var points to backend URL
 
 Backend (Express / Go / Spring Boot, port 3001)
-  └── Uses Glide BE SDK (Node: @glideidentity/glide-be-sdk-node, Java: glide-be-sdk-java)
+  └── Uses Glide BE SDK (Node: @glideidentity/glide-be-node-magical-auth, Java: glide-be-sdk-java)
   └── OAuth2 client credentials authentication to Glide API
-  └── Endpoints: /api/phone-auth/prepare, /process, /invoke, /complete, /status/:id
+  └── Endpoints: /api/magical-auth/prepare, /process, /report-invocation, /complete
   └── GET /glide-complete — device binding completion redirect page
 ```
 
@@ -29,7 +29,6 @@ frontend/
 
 server/
   node/index.ts            — Node.js Express server (primary)
-  node/session-store.ts    — In-memory session URL storage
   go/main.go               — Go backend (same API)
   java/src/.../controller/  — Java Spring Boot controllers
   java/src/.../service/     — Java service layer
@@ -81,12 +80,11 @@ All backends implement the same API:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/phone-auth/prepare` | Start auth session, set device binding cookie |
-| POST | `/api/phone-auth/invoke` | Report invocation for metrics |
-| POST | `/api/phone-auth/process` | Process credential (verify or get phone number) |
-| GET | `/api/phone-auth/status/:id` | Poll session status (desktop/QR flow) |
+| POST | `/api/magical-auth/prepare` | Start auth session, set device binding cookie |
+| POST | `/api/magical-auth/report-invocation` | Report invocation for metrics |
+| POST | `/api/magical-auth/process` | Process credential (verify or get phone number) |
 | GET | `/glide-complete` | Device binding completion redirect page |
-| POST | `/api/phone-auth/complete` | Complete device-bound session |
+| POST | `/api/magical-auth/complete` | Complete device-bound session |
 
 ## Device Binding (Link Protocol)
 
@@ -94,7 +92,7 @@ For the Link/App Clip authentication strategy (iOS), the SDK implements device b
 
 1. **Prepare**: Backend generates `fe_code`, computes `fe_hash = SHA256(fe_code)`, sends `fe_hash` to Glide, sets `fe_code` as HttpOnly cookie `_glide_bind_{session_prefix}`
 2. **Carrier auth**: User authenticates via App Clip, Glide redirects to `/glide-complete#agg_code=xxx&session_key=yyy`
-3. **Completion page**: Reads `agg_code` from URL fragment, writes localStorage signal for the original tab, POSTs to `/api/phone-auth/complete`
+3. **Completion page**: Reads `agg_code` from URL fragment, writes localStorage signal for the original tab, POSTs to `/api/magical-auth/complete`
 4. **Complete**: Backend reads `fe_code` from cookie + `agg_code` from body, forwards to Glide for dual-code validation
 
 The completion page is served by the backend using the SDK's `getCompletionPageHtml()` helper.
@@ -108,7 +106,7 @@ See `deployments/README.md` for step-by-step guides:
 
 **When is deployment needed?**
 - **TS43** (Android): Works from localhost — no deployment required. The `aud` field validates the web origin.
-- **Desktop** (QR): Works from localhost — uses polling.
+- **Desktop** (QR): Works from localhost — SDK handles waiting internally via process endpoint.
 - **Link** (iOS App Clips): **Requires a public HTTPS URL.** The `_glide_bind_*` HttpOnly cookie is domain-scoped, and the completion redirect page must be on the same domain that set the cookie.
 
 ## Common Tasks

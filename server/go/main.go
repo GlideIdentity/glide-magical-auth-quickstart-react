@@ -1,24 +1,24 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"strings"
 
-	glide "github.com/GlideIdentity/glide-be-sdk-go/v2"
+	"github.com/GlideIdentity/glide-be-sdk-go/v2/magicalauth"
 	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 )
 
-var glideClient *glide.Client
+var magicalAuth *magicalauth.Client
 
 type HealthCheckResponse struct {
-	Status           string   `json:"status"`
-	GlideInitialized bool     `json:"glideInitialized"`
-	GlideProperties  []string `json:"glideProperties"`
+	Status           string `json:"status"`
+	SDK              string `json:"sdk"`
+	SDKInitialized   bool   `json:"sdkInitialized"`
 	Env              struct {
 		HasClientID     bool `json:"hasClientId"`
 		HasClientSecret bool `json:"hasClientSecret"`
@@ -48,25 +48,27 @@ func main() {
 		port = "3001"
 	}
 
-	// Initialize Glide client with OAuth2 credentials
+	// Initialize Magical Auth SDK with OAuth2 credentials
 	clientID := os.Getenv("GLIDE_CLIENT_ID")
 	clientSecret := os.Getenv("GLIDE_CLIENT_SECRET")
 
 	if clientID == "" || clientSecret == "" {
 		log.Println("⚠️  Missing OAuth2 credentials. Please set GLIDE_CLIENT_ID and GLIDE_CLIENT_SECRET in your .env file.")
 	} else {
-		// Determine log level
-		logLevel := glide.LogLevelInfo
-		if os.Getenv("GLIDE_DEBUG") == "true" {
-			logLevel = glide.LogLevelDebug
+		cfg := magicalauth.Config{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+		}
+		if baseURL := os.Getenv("GLIDE_API_BASE_URL"); baseURL != "" {
+			cfg.BaseURL = baseURL
 		}
 
-		// Initialize the Glide SDK with OAuth2 credentials
-		glideClient = glide.New(
-			glide.WithClientCredentials(clientID, clientSecret),
-			glide.WithLogLevel(logLevel),
-		)
-		log.Println("✅ Glide SDK initialized with OAuth2")
+		client, err := magicalauth.NewClient(cfg)
+		if err != nil {
+			log.Fatalf("Failed to initialize Magical Auth SDK: %v", err)
+		}
+		magicalAuth = client
+		log.Println("✅ Magical Auth SDK initialized with OAuth2")
 	}
 
 	// Setup routes
@@ -75,28 +77,36 @@ func main() {
 	// Health check endpoint
 	mux.HandleFunc("/api/health", healthCheckHandler)
 
-	// Phone Auth endpoints
-	mux.HandleFunc("/api/phone-auth/prepare", phoneAuthPrepareHandler)
-	mux.HandleFunc("/api/phone-auth/invoke", phoneAuthInvokeHandler)
-	mux.HandleFunc("/api/phone-auth/process", phoneAuthProcessHandler)
-	mux.HandleFunc("/api/phone-auth/status/", phoneAuthStatusHandler)
+	// Magical Auth endpoints
+	mux.HandleFunc("/api/magical-auth/prepare", phoneAuthPrepareHandler)
+	mux.HandleFunc("/api/magical-auth/report-invocation", phoneAuthInvokeHandler)
+	mux.HandleFunc("/api/magical-auth/process", phoneAuthProcessHandler)
 
-	// Setup CORS
+	// Device binding: completion page (GET) and complete endpoint (POST)
+	mux.HandleFunc("/glide-complete", glideCompletePageHandler)
+	mux.HandleFunc("/api/magical-auth/complete", phoneAuthCompleteHandler)
+
+	// CORS: device binding requires credentials: 'include' for HttpOnly cookie passthrough
 	c := cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"*"},
-		Debug:          false,
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: true,
 	})
 
 	handler := c.Handler(mux)
 
-	log.Printf("Server running on http://localhost:%s\n", port)
+	log.Printf("🚀 Server running on http://localhost:%s\n", port)
+	log.Println("📦 SDK: magicalauth (MagicalAuth Go SDK)")
 
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}
 }
+
+// =============================================================================
+// Health Check
+// =============================================================================
 
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -104,21 +114,21 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientID := os.Getenv("GLIDE_CLIENT_ID")
-	clientSecret := os.Getenv("GLIDE_CLIENT_SECRET")
-
 	response := HealthCheckResponse{
-		Status:           "ok",
-		GlideInitialized: glideClient != nil,
-		GlideProperties:  []string{"magicalAuth"},
+		Status:         "ok",
+		SDK:            "magicalauth",
+		SDKInitialized: magicalAuth != nil,
 	}
-
-	response.Env.HasClientID = clientID != ""
-	response.Env.HasClientSecret = clientSecret != ""
+	response.Env.HasClientID = os.Getenv("GLIDE_CLIENT_ID") != ""
+	response.Env.HasClientSecret = os.Getenv("GLIDE_CLIENT_SECRET") != ""
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
+// =============================================================================
+// Prepare — initiates the authentication flow
+// =============================================================================
 
 func phoneAuthPrepareHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -126,13 +136,13 @@ func phoneAuthPrepareHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if glideClient == nil {
+	if magicalAuth == nil {
 		sendErrorResponse(w, http.StatusServiceUnavailable, "SDK_NOT_INITIALIZED",
-			"Glide SDK not initialized. Check your credentials.", nil)
+			"Magical Auth SDK not initialized. Check your credentials.", nil)
 		return
 	}
 
-	var req glide.PrepareRequest
+	var req magicalauth.PrepareRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body", nil)
 		return
@@ -140,39 +150,49 @@ func phoneAuthPrepareHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("📱 Prepare request: { use_case: '%s' }\n", req.UseCase)
 
-	// Set default T-Mobile PLMN for GetPhoneNumber if neither phone_number nor PLMN provided
-	if req.UseCase == glide.UseCaseGetPhoneNumber && req.PhoneNumber == "" && (req.PLMN == nil || req.PLMN.MCC == "" || req.PLMN.MNC == "") {
-		log.Println("No phone_number or PLMN provided for GetPhoneNumber, using default T-Mobile PLMN")
-		req.PLMN = &glide.PLMN{
-			MCC: "310",
-			MNC: "260", // T-Mobile USA
-		}
+	// Apply default PLMN for GetPhoneNumber if not provided
+	if req.UseCase == magicalauth.UseCaseGetPhoneNumber && (req.PLMN == nil || req.PLMN.MCC == "") {
+		log.Println("📶 PLMN not provided, defaulting to T-Mobile US (310/260)")
+		req.PLMN = &magicalauth.PLMN{MCC: "310", MNC: "260"}
 	}
 
-	// Use the SDK to prepare the request
-	ctx, cancel := glideClient.Context()
-	defer cancel()
-
-	response, err := glideClient.MagicalAuth.Prepare(ctx, &req)
+	// SDK auto-generates fe_code/fe_hash for device binding (link strategy)
+	result, err := magicalAuth.Prepare(context.Background(), &req)
 	if err != nil {
-		handleGlideError(w, err)
+		handleSDKError(w, err)
 		return
 	}
 
 	log.Printf("✅ Prepare success: { strategy: '%s', session_key: '%s' }\n",
-		response.AuthenticationStrategy, response.Session.SessionKey)
+		result.AuthenticationStrategy, result.Session.SessionKey)
 
-	// Store status_url for the polling proxy endpoint
-	if statusURL := ExtractStatusURL(response); statusURL != "" {
-		StoreStatusURL(response.Session.SessionKey, statusURL)
+	// Device binding: set HttpOnly cookie with fe_code for link strategy.
+	// The SDK's Prepare already generated fe_code — we just need to persist it as a cookie.
+	if result.FeCode != "" && result.Session.SessionKey != "" {
+		isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+		cookieOpts := &magicalauth.BindingCookieOptions{Secure: isSecure}
+
+		// Clear any stale binding cookies from abandoned flows
+		for _, sc := range magicalauth.ClearStaleBindingCookies(r.Header.Get("Cookie"), cookieOpts) {
+			w.Header().Add("Set-Cookie", sc)
+		}
+
+		cookie, err := magicalauth.BuildSetBindingCookieHeader(result.FeCode, result.Session.SessionKey, cookieOpts)
+		if err == nil {
+			w.Header().Add("Set-Cookie", cookie)
+			log.Println("🔒 Device binding cookie set for link strategy")
+		}
 	}
 
+	// Return the prepare response (feCode is NOT included — it's JSON:"-" in the SDK)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(result)
 }
 
-// phoneAuthInvokeHandler reports that an authentication flow was started.
-// This call can be made asynchronously without blocking the flow.
+// =============================================================================
+// Invoke — reports invocation for ASR tracking (non-blocking)
+// =============================================================================
+
 func phoneAuthInvokeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -185,35 +205,27 @@ func phoneAuthInvokeHandler(w http.ResponseWriter, r *http.Request) {
 		SessionID string `json:"session_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
-		log.Println("⚠️ [Invoke] Failed to decode request body")
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "reason": "invalid_request_body"})
 		return
 	}
 
 	if reqBody.SessionID == "" {
-		log.Println("⚠️ [Invoke] No session_id provided, skipping invocation report")
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "reason": "missing_session_id"})
 		return
 	}
 
-	if glideClient == nil {
-		log.Println("⚠️ [Invoke] SDK not initialized, skipping invocation report")
+	if magicalAuth == nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "reason": "client_not_configured"})
 		return
 	}
 
-	// Log a truncated session ID for debugging
-	sessionIDPreview := reqBody.SessionID
-	if len(sessionIDPreview) > 8 {
-		sessionIDPreview = sessionIDPreview[:8] + "..."
+	sessionPreview := reqBody.SessionID
+	if len(sessionPreview) > 8 {
+		sessionPreview = sessionPreview[:8] + "..."
 	}
-	log.Printf("📊 [Invoke] Reporting invocation for session: %s\n", sessionIDPreview)
+	log.Printf("📊 [Invoke] Reporting invocation for session: %s\n", sessionPreview)
 
-	// Call SDK and return actual response
-	ctx, cancel := glideClient.Context()
-	defer cancel()
-
-	result, err := glideClient.MagicalAuth.ReportInvocation(ctx, &glide.ReportInvocationRequest{
+	result, err := magicalAuth.ReportInvocation(context.Background(), &magicalauth.ReportInvocationRequest{
 		SessionID: reqBody.SessionID,
 	})
 	if err != nil {
@@ -223,9 +235,14 @@ func phoneAuthInvokeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("✅ [Invoke] Report response: success=%v\n", result.Success)
-	json.NewEncoder(w).Encode(map[string]bool{"success": result.Success})
+	success := result.Status == magicalauth.ReportStatusSuccess
+	log.Printf("✅ [Invoke] Report response: success=%v\n", success)
+	json.NewEncoder(w).Encode(map[string]bool{"success": success})
 }
+
+// =============================================================================
+// Process — dispatches to getPhoneNumber or verifyPhoneNumber
+// =============================================================================
 
 func phoneAuthProcessHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -233,55 +250,57 @@ func phoneAuthProcessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if glideClient == nil {
+	if magicalAuth == nil {
 		sendErrorResponse(w, http.StatusServiceUnavailable, "SDK_NOT_INITIALIZED",
-			"Glide SDK not initialized. Check your credentials.", nil)
+			"Magical Auth SDK not initialized. Check your credentials.", nil)
 		return
 	}
 
-	// Decode the request
 	var reqBody struct {
-		UseCase    string            `json:"use_case"`
-		Session    glide.SessionInfo `json:"session"`
-		Credential string            `json:"credential"`
+		UseCase    string                 `json:"use_case"`
+		Session    magicalauth.SessionInfo `json:"session"`
+		Credential string                 `json:"credential"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
-		log.Printf("Failed to decode request body: %v\n", err)
 		sendErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body", nil)
 		return
 	}
 
 	log.Printf("🔐 Process request: { use_case: '%s' }\n", reqBody.UseCase)
 
-	// Validate required fields
 	if reqBody.UseCase == "" || reqBody.Credential == "" {
 		sendErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR",
-			"use_case, session, and credential are required", nil)
+			"use_case and credential are required", nil)
 		return
 	}
 
-	ctx, cancel := glideClient.Context()
-	defer cancel()
+	// Read the device binding code from the HttpOnly cookie set during prepare.
+	// This extends device binding verification to the process step (link protocol only).
+	feCode := magicalauth.ParseBindingCookie(r.Header.Get("Cookie"), reqBody.Session.SessionKey)
+	if feCode != "" {
+		log.Println("🔒 Device binding cookie found for process step")
+	}
 
 	var result interface{}
 	var err error
 
-	// Call the appropriate SDK method based on use_case
-	switch reqBody.UseCase {
-	case "GetPhoneNumber":
-		response, e := glideClient.MagicalAuth.GetPhoneNumber(ctx, &glide.GetPhoneNumberRequest{
+	switch magicalauth.UseCase(reqBody.UseCase) {
+	case magicalauth.UseCaseGetPhoneNumber:
+		response, e := magicalAuth.GetPhoneNumber(context.Background(), &magicalauth.GetPhoneNumberRequest{
 			Session:    reqBody.Session,
 			Credential: reqBody.Credential,
+			FeCode:     feCode,
 		})
 		if e == nil {
 			log.Printf("✅ GetPhoneNumber success: { phone_number: '%s****' }\n", response.PhoneNumber[:6])
 		}
 		result = response
 		err = e
-	case "VerifyPhoneNumber":
-		response, e := glideClient.MagicalAuth.VerifyPhoneNumber(ctx, &glide.VerifyPhoneNumberRequest{
+	case magicalauth.UseCaseVerifyPhoneNumber:
+		response, e := magicalAuth.VerifyPhoneNumber(context.Background(), &magicalauth.VerifyPhoneNumberRequest{
 			Session:    reqBody.Session,
 			Credential: reqBody.Credential,
+			FeCode:     feCode,
 		})
 		if e == nil {
 			log.Printf("✅ VerifyPhoneNumber success: { verified: %v }\n", response.Verified)
@@ -290,12 +309,13 @@ func phoneAuthProcessHandler(w http.ResponseWriter, r *http.Request) {
 		err = e
 	default:
 		sendErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR",
-			fmt.Sprintf("Invalid use_case. Must be 'GetPhoneNumber' or 'VerifyPhoneNumber', got: %s", reqBody.UseCase), nil)
+			fmt.Sprintf("Invalid use_case. Must be '%s' or '%s', got: %s",
+				magicalauth.UseCaseGetPhoneNumber, magicalauth.UseCaseVerifyPhoneNumber, reqBody.UseCase), nil)
 		return
 	}
 
 	if err != nil {
-		handleGlideError(w, err)
+		handleSDKError(w, err)
 		return
 	}
 
@@ -303,31 +323,135 @@ func phoneAuthProcessHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-func handleGlideError(w http.ResponseWriter, err error) {
-	if glideErr, ok := err.(*glide.MagicalAuthError); ok {
-		log.Printf("❌ MagicalAuthError: code=%s, message=%s, status=%d\n",
-			glideErr.Code, glideErr.Message, glideErr.Status)
+// =============================================================================
+// Device Binding: Completion Page
+// =============================================================================
 
-		status := glideErr.Status
+/**
+ * Completion redirect page — served after carrier authentication.
+ *
+ * The aggregator redirects the phone browser to this URL with agg_code and
+ * session_key in the URL fragment. The page extracts them, writes a localStorage
+ * signal for the original tab, and POSTs to /api/magical-auth/complete (the browser
+ * auto-attaches the _glide_bind HttpOnly cookie).
+ */
+func glideCompletePageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// The SDK provides the completion page HTML — no inline HTML needed
+	html, err := magicalauth.GetCompletionPageHTML("/api/magical-auth/complete")
+	if err != nil {
+		sendErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to generate completion page", nil)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Write([]byte(html))
+}
+
+// =============================================================================
+// Device Binding: Complete Endpoint
+// =============================================================================
+
+/**
+ * Complete endpoint — called by the completion redirect page.
+ *
+ * Reads fe_code from the _glide_bind HttpOnly cookie (auto-attached by the browser),
+ * agg_code and session_key from the POST body, and forwards all three to the
+ * aggregator's /complete endpoint. Returns 204 on success.
+ */
+func phoneAuthCompleteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if magicalAuth == nil {
+		sendErrorResponse(w, http.StatusServiceUnavailable, "SDK_NOT_INITIALIZED",
+			"Magical Auth SDK not initialized.", nil)
+		return
+	}
+
+	var reqBody struct {
+		SessionKey string `json:"session_key"`
+		AggCode    string `json:"agg_code"`
+		UserAgent  string `json:"user_agent"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		sendErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body", nil)
+		return
+	}
+
+	if reqBody.SessionKey == "" || reqBody.AggCode == "" {
+		sendErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR",
+			"session_key and agg_code are required", nil)
+		return
+	}
+
+	// Read fe_code from the session-scoped HttpOnly cookie (set during prepare)
+	feCode := magicalauth.ParseBindingCookie(r.Header.Get("Cookie"), reqBody.SessionKey)
+	if feCode == "" {
+		log.Printf("❌ Complete: missing binding cookie for session %s\n", truncateForLog(reqBody.SessionKey))
+		sendErrorResponse(w, http.StatusForbidden, "MISSING_BINDING_COOKIE",
+			"Device binding cookie is missing. The prepare and complete must happen in the same browser.", nil)
+		return
+	}
+
+	log.Printf("🔐 Complete request for session: %s...\n", truncateForLog(reqBody.SessionKey))
+
+	// The SDK validates the binding codes and completes the session
+	_, err := magicalAuth.Complete(context.Background(), &magicalauth.CompleteRequest{
+		SessionKey: reqBody.SessionKey,
+		FeCode:     feCode,
+		AggCode:    reqBody.AggCode,
+		UserAgent:  reqBody.UserAgent,
+	})
+	if err != nil {
+		handleSDKError(w, err)
+		return
+	}
+
+	log.Println("✅ Complete succeeded")
+
+	// The device binding cookie is intentionally not cleared here — it is needed
+	// by the process step (/verify-phone-number or /get-phone-number) for continued
+	// device binding validation. The cookie auto-expires after 5 minutes.
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// =============================================================================
+// Error Handling
+// =============================================================================
+
+func handleSDKError(w http.ResponseWriter, err error) {
+	if apiErr, ok := err.(*magicalauth.APIError); ok {
+		log.Printf("❌ MagicalAuthError: code=%s, status=%d, message=%s\n",
+			apiErr.Code, apiErr.Status, apiErr.Message)
+
+		status := apiErr.Status
 		if status == 0 {
 			status = http.StatusInternalServerError
 		}
 
-		// Include all error fields in details
-		allDetails := glideErr.Details
-		if allDetails == nil {
-			allDetails = make(map[string]interface{})
-		}
-		if glideErr.RequestID != "" {
-			allDetails["requestId"] = glideErr.RequestID
-		}
-		allDetails["status"] = glideErr.Status
-
-		sendErrorResponse(w, status, glideErr.Code, glideErr.Message, allDetails)
+		sendErrorResponse(w, status, string(apiErr.Code), apiErr.Message, nil)
 	} else {
 		log.Printf("❌ Unexpected error: %v\n", err)
 		sendErrorResponse(w, http.StatusInternalServerError, "UNEXPECTED_ERROR", err.Error(), nil)
 	}
+}
+
+func truncateForLog(s string) string {
+	if len(s) > 8 {
+		return s[:8]
+	}
+	return s
 }
 
 func sendErrorResponse(w http.ResponseWriter, status int, code, message string, details map[string]interface{}) {
@@ -338,89 +462,9 @@ func sendErrorResponse(w http.ResponseWriter, status int, code, message string, 
 		Error:   code,
 		Message: message,
 	}
-
 	if details != nil {
 		response.Details = details
-		if reqID, ok := details["request_id"].(string); ok {
-			response.RequestID = reqID
-		} else if reqID, ok := details["requestId"].(string); ok {
-			response.RequestID = reqID
-		}
 	}
 
 	json.NewEncoder(w).Encode(response)
-}
-
-func phoneAuthStatusHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Extract session ID from the path
-	path := strings.TrimPrefix(r.URL.Path, "/api/phone-auth/status/")
-	sessionID := strings.TrimSpace(path)
-
-	if sessionID == "" {
-		sendErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "Session ID is required", nil)
-		return
-	}
-
-	// Get the stored status URL from prepare response
-	statusURL, found := GetStoredStatusURL(sessionID)
-	if !found {
-		sessionPreview := sessionID
-		if len(sessionPreview) > 8 {
-			sessionPreview = sessionPreview[:8] + "..."
-		}
-		log.Printf("[Status Proxy] No stored status URL for session: %s\n", sessionPreview)
-		sendErrorResponse(w, http.StatusNotFound, "SESSION_NOT_FOUND",
-			"Session not found. It may have expired or prepare was not called.", nil)
-		return
-	}
-
-	sessionPreview := sessionID
-	if len(sessionPreview) > 8 {
-		sessionPreview = sessionPreview[:8] + "..."
-	}
-	log.Printf("[Status Proxy] Polling session: %s\n", sessionPreview)
-
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", statusURL, nil)
-	if err != nil {
-		log.Printf("[Status Proxy] Error creating request: %v\n", err)
-		sendErrorResponse(w, http.StatusInternalServerError, "REQUEST_ERROR",
-			"Failed to create status request", nil)
-		return
-	}
-
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("[Status Proxy] Error fetching status: %v\n", err)
-		sendErrorResponse(w, http.StatusInternalServerError, "STATUS_CHECK_FAILED",
-			"Failed to check status", nil)
-		return
-	}
-	defer resp.Body.Close()
-
-	log.Printf("[Status Proxy] Status check returned %d\n", resp.StatusCode)
-
-	// Read the response body
-	var responseData interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
-		log.Printf("[Status Proxy] Error decoding response: %v\n", err)
-		sendErrorResponse(w, http.StatusInternalServerError, "DECODE_ERROR",
-			"Failed to decode status response", nil)
-		return
-	}
-
-	// Forward the response
-	if resp.StatusCode >= 400 {
-		w.WriteHeader(resp.StatusCode)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(responseData)
 }

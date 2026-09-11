@@ -135,7 +135,7 @@ The Link protocol (iOS App Clips) requires a `completion_redirect_url` configure
 1. User taps the App Clip (iOS) for carrier authentication
 2. Carrier verifies the user's SIM
 3. Glide redirects to your `completion_redirect_url` with `agg_code` in the URL fragment
-4. Your completion page reads `agg_code`, writes a localStorage signal, and POSTs to `/api/phone-auth/complete`
+4. Your completion page reads `agg_code`, writes a localStorage signal, and POSTs to `/api/magical-auth/complete`
 5. Your backend reads `fe_code` from the HttpOnly cookie and forwards both codes to Glide
 6. Glide validates both codes — session is complete
 

@@ -1,10 +1,10 @@
 /**
  * =============================================================================
- * Magical Auth Quickstart Server (Node.js with Glide SDK)
+ * Magical Auth Quickstart Server (Node.js with @glideidentity/glide-be-node-magical-auth SDK)
  * =============================================================================
  * 
- * This server demonstrates how to use the official @glideidentity/glide-be-sdk-node
- * package to integrate Magical Auth into your application.
+ * This server demonstrates how to use the @glideidentity/glide-be-node-magical-auth SDK
+ * to integrate Magical Auth into your application.
  * 
  * Authentication: OAuth2 Client Credentials
  * =============================================================================
@@ -15,11 +15,10 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { 
-  GlideClient, 
-  LogLevel, 
-  UseCase, 
-  ErrorCode,
+  MagicalAuthClient,
   MagicalAuthError,
+  ErrorCode,
+  UseCase,
   BINDING_COOKIE_MAX_AGE,
   getBindingCookieName,
   parseBindingCookie,
@@ -28,8 +27,8 @@ import {
   type PrepareResult,
   type GetPhoneNumberRequest,
   type VerifyPhoneNumberRequest,
-} from '@glideidentity/glide-be-sdk-node';
-import { storeStatusUrl, getStatusUrl, extractStatusUrl } from './session-store';
+  type Logger,
+} from '@glideidentity/glide-be-node-magical-auth';
 
 // Load environment variables from root .env file
 // When run via npm scripts, cwd is project root; when run directly, we're in server/node/
@@ -38,14 +37,23 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 // Default T-Mobile US PLMN (used when client doesn't provide one)
 const DEFAULT_PLMN = { mcc: '310', mnc: '260' };
 
+// Console logger that respects the GLIDE_DEBUG env var for debug-level messages
+const consoleLogger: Logger = {
+  debug: (msg, meta) => { if (process.env.GLIDE_DEBUG === 'true') console.debug(`[SDK] ${msg}`, meta ?? ''); },
+  info: (msg, meta) => console.info(`[SDK] ${msg}`, meta ?? ''),
+  warn: (msg, meta) => console.warn(`[SDK] ${msg}`, meta ?? ''),
+  error: (msg, meta) => console.error(`[SDK] ${msg}`, meta ?? ''),
+};
+
 // =============================================================================
-// Initialize Glide SDK
+// Initialize Magical Auth SDK
 // =============================================================================
 
-const glide = new GlideClient({
-  clientId: process.env.GLIDE_CLIENT_ID,
-  clientSecret: process.env.GLIDE_CLIENT_SECRET,
-  logLevel: process.env.GLIDE_DEBUG === 'true' ? LogLevel.DEBUG : LogLevel.INFO,
+const magicalAuth = new MagicalAuthClient({
+  clientId: process.env.GLIDE_CLIENT_ID!,
+  clientSecret: process.env.GLIDE_CLIENT_SECRET!,
+  baseUrl: process.env.GLIDE_API_BASE_URL || undefined,
+  logger: consoleLogger,
 });
 
 // =============================================================================
@@ -62,6 +70,33 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json());
 
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Shared error handler for SDK errors.
+ * Extracts structured error fields from MagicalAuthError for the client.
+ */
+function handleSdkError(res: Response, error: unknown): void {
+  if (error instanceof MagicalAuthError) {
+    const httpStatus = error.status || 500;
+    res.status(httpStatus).json({
+      error: error.code,
+      message: error.message,
+      requestId: error.requestId,
+      details: error.details,
+      status: httpStatus,
+    });
+    return;
+  }
+
+  res.status(500).json({
+    error: ErrorCode.INTERNAL_SERVER_ERROR,
+    message: error instanceof Error ? error.message : 'An unexpected error occurred',
+    status: 500,
+  });
+}
 
 // =============================================================================
 // Health Check Endpoint
@@ -70,30 +105,30 @@ app.use(express.json());
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    glideInitialized: !!glide,
-    glideProperties: ['magicalAuth'],
+    sdk: '@glideidentity/glide-be-node-magical-auth',
+    sdkInitialized: !!magicalAuth,
     env: {
       hasClientId: !!process.env.GLIDE_CLIENT_ID,
       hasClientSecret: !!process.env.GLIDE_CLIENT_SECRET,
-    }
+    },
   });
 });
 
 // =============================================================================
-// Phone Auth Endpoints
+// Magical Auth Endpoints
 // =============================================================================
 
 /**
  * Prepare endpoint - initiates the authentication flow
  */
-app.post('/api/phone-auth/prepare', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/magical-auth/prepare', async (req: Request, res: Response): Promise<void> => {
   try {
     // Validate the request
     if (!req.body.use_case) {
       res.status(400).json({
-        error: ErrorCode.MISSING_REQUIRED_FIELD,
+        error: ErrorCode.VALIDATION_ERROR,
         message: 'use_case is required',
-        status: 400
+        status: 400,
       });
       return;
     }
@@ -101,8 +136,7 @@ app.post('/api/phone-auth/prepare', async (req: Request, res: Response): Promise
     const prepareRequest = { ...req.body };
     
     // Apply default PLMN for GetPhoneNumber if not provided
-    const isGetPhoneNumber = prepareRequest.use_case === UseCase.GET_PHONE_NUMBER || prepareRequest.use_case === 'GetPhoneNumber';
-    if (isGetPhoneNumber && !prepareRequest.plmn) {
+    if (prepareRequest.use_case === UseCase.GET_PHONE_NUMBER && !prepareRequest.plmn) {
       prepareRequest.plmn = DEFAULT_PLMN;
       console.log('📶 PLMN not provided in request, defaulting to T-Mobile US (MCC: 310, MNC: 260)');
     }
@@ -110,19 +144,13 @@ app.post('/api/phone-auth/prepare', async (req: Request, res: Response): Promise
     console.log('📱 Prepare request:', { use_case: prepareRequest.use_case });
     
     // Prepare the authentication request using the SDK
-    const response = await glide.magicalAuth.prepare(prepareRequest as PrepareRequest) as PrepareResult;
+    const response: PrepareResult = await magicalAuth.prepare(prepareRequest as PrepareRequest);
     
     console.log('✅ Prepare success:', { 
       strategy: response.authentication_strategy,
-      session_key: response.session?.session_key 
+      session_key: response.session?.session_key,
     });
     
-    // Store status_url for the polling proxy endpoint
-    const statusUrl = extractStatusUrl(response);
-    if (statusUrl && response.session?.session_key) {
-      storeStatusUrl(response.session.session_key, statusUrl);
-    }
-
     // Device binding: set HttpOnly cookie with fe_code for link strategy.
     // Uses Express res.cookie() (framework-native) to avoid raw header injection vectors.
     const sessionKey = response.session?.session_key;
@@ -144,31 +172,16 @@ app.post('/api/phone-auth/prepare', async (req: Request, res: Response): Promise
     res.json(clientResponse);
   } catch (error) {
     console.error('❌ Prepare error:', error);
-    
-    if (error instanceof MagicalAuthError) {
-      res.status(error.status || 500).json({
-        error: error.code,
-        message: error.message,
-        requestId: error.requestId,
-        details: error.details,
-        status: error.status
-      });
-      return;
-    }
-
-    res.status(500).json({
-      error: ErrorCode.INTERNAL_SERVER_ERROR,
-      message: error instanceof Error ? error.message : 'An unexpected error occurred',
-      status: 500,
-    });
+    handleSdkError(res, error);
   }
 });
 
 /**
  * Invoke endpoint - reports that an authentication flow was started.
  * This call can be made asynchronously without blocking the flow.
+ * Used for Authentication Success Rate (ASR) tracking.
  */
-app.post('/api/phone-auth/invoke', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/magical-auth/report-invocation', async (req: Request, res: Response): Promise<void> => {
   const { session_id } = req.body;
   
   if (!session_id) {
@@ -182,20 +195,23 @@ app.post('/api/phone-auth/invoke', async (req: Request, res: Response): Promise<
   console.log(`📊 [Invoke] Reporting invocation for session: ${sessionIdPreview}`);
 
   try {
-    const result = await glide.magicalAuth.reportInvocation({ session_id });
+    // The new SDK takes sessionId as a string parameter (not an object)
+    const result = await magicalAuth.reportInvocation(session_id);
     console.log('✅ [Invoke] Report response:', result);
-    res.json({ success: result.success });
-  } catch (error: any) {
+    res.json({ success: !!result });
+  } catch (error: unknown) {
     // Log the error but NEVER fail the response with an error status code
-    console.error('❌ [Invoke] Failed to report invocation:', error.message || error);
-    res.json({ success: false, error: error.message || 'unknown_error' });
+    const msg = error instanceof Error ? error.message : 'unknown_error';
+    console.error('❌ [Invoke] Failed to report invocation:', msg);
+    res.json({ success: false, error: msg });
   }
 });
 
 /**
- * Process endpoint - processes the credential from the browser
+ * Process endpoint - processes the credential from the browser.
+ * Dispatches to either getPhoneNumber or verifyPhoneNumber based on use_case.
  */
-app.post('/api/phone-auth/process', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/magical-auth/process', async (req: Request, res: Response): Promise<void> => {
   try {
     const { use_case, session, credential } = req.body;
     
@@ -204,9 +220,9 @@ app.post('/api/phone-auth/process', async (req: Request, res: Response): Promise
     // Validate required fields
     if (!use_case || !session || !credential) {
       res.status(400).json({
-        error: ErrorCode.MISSING_REQUIRED_FIELD,
+        error: ErrorCode.VALIDATION_ERROR,
         message: 'use_case, session, and credential are required',
-        status: 400
+        status: 400,
       });
       return;
     }
@@ -221,18 +237,18 @@ app.post('/api/phone-auth/process', async (req: Request, res: Response): Promise
 
     let result;
 
-    if (use_case === UseCase.GET_PHONE_NUMBER || use_case === 'GetPhoneNumber') {
-      result = await glide.magicalAuth.getPhoneNumber({
+    if (use_case === UseCase.GET_PHONE_NUMBER) {
+      result = await magicalAuth.getPhoneNumber({
         session,
         credential,
         ...(feCode && { fe_code: feCode }),
       } as GetPhoneNumberRequest);
       
       console.log('✅ GetPhoneNumber success:', { 
-        phone_number: result.phone_number?.substring(0, 6) + '****' 
+        phone_number: result.phone_number?.substring(0, 6) + '****',
       });
-    } else if (use_case === UseCase.VERIFY_PHONE_NUMBER || use_case === 'VerifyPhoneNumber') {
-      result = await glide.magicalAuth.verifyPhoneNumber({
+    } else if (use_case === UseCase.VERIFY_PHONE_NUMBER) {
+      result = await magicalAuth.verifyPhoneNumber({
         session,
         credential,
         ...(feCode && { fe_code: feCode }),
@@ -245,9 +261,9 @@ app.post('/api/phone-auth/process', async (req: Request, res: Response): Promise
       });
     } else {
       res.status(400).json({
-        error: ErrorCode.INVALID_USE_CASE,
-        message: `Invalid use_case. Must be 'GetPhoneNumber' or 'VerifyPhoneNumber', got: ${use_case}`,
-        status: 400
+        error: ErrorCode.VALIDATION_ERROR,
+        message: `Invalid use_case. Must be '${UseCase.GET_PHONE_NUMBER}' or '${UseCase.VERIFY_PHONE_NUMBER}', got: ${use_case}`,
+        status: 400,
       });
       return;
     }
@@ -258,82 +274,7 @@ app.post('/api/phone-auth/process', async (req: Request, res: Response): Promise
     res.json(result);
   } catch (error) {
     console.error('❌ Process error:', error);
-    
-    if (error instanceof MagicalAuthError) {
-      res.status(error.status || 500).json({
-        error: error.code,
-        message: error.message,
-        requestId: error.requestId,
-        details: error.details,
-        status: error.status
-      });
-      return;
-    }
-
-    res.status(500).json({
-      error: ErrorCode.INTERNAL_SERVER_ERROR,
-      message: error instanceof Error ? error.message : 'An unexpected error occurred',
-      status: 500,
-    });
-  }
-});
-
-/**
- * Status endpoint - proxies status checks using the stored status_url
- * 
- * WHY USE A PROXY?
- * 1. Uses the exact status_url from the prepare response (stored server-side)
- * 2. Avoids CORS issues in browser environments
- * 3. Provides server-side logging for debugging
- */
-app.get('/api/phone-auth/status/:sessionId', async (req: Request, res: Response): Promise<void> => {
-  const { sessionId } = req.params;
-
-  if (!sessionId) {
-    res.status(400).json({
-      error: 'INVALID_REQUEST',
-      message: 'Session ID is required',
-      status: 400
-    });
-    return;
-  }
-
-  // Get the stored status URL from prepare response
-  const statusUrl = getStatusUrl(sessionId);
-  
-  if (!statusUrl) {
-    console.warn(`[Status Proxy] No stored status URL for session: ${sessionId.substring(0, 8)}...`);
-    res.status(404).json({
-      error: 'SESSION_NOT_FOUND',
-      message: 'Session not found. It may have expired or prepare was not called.',
-      status: 404
-    });
-    return;
-  }
-
-  console.log(`[Status Proxy] Polling session: ${sessionId.substring(0, 8)}...`);
-
-  try {
-    const response = await fetch(statusUrl, {
-      headers: { 'Accept': 'application/json' }
-    });
-    const data = await response.json();
-
-    console.log('[Status Proxy] Status check returned', response.status);
-
-    if (!response.ok) {
-      res.status(response.status).json(data);
-      return;
-    }
-
-    res.json(data);
-  } catch (error) {
-    console.error('[Status Proxy] Error fetching status:', error);
-    res.status(500).json({
-      error: 'STATUS_CHECK_FAILED',
-      message: 'Failed to check status',
-      status: 500
-    });
+    handleSdkError(res, error);
   }
 });
 
@@ -346,12 +287,12 @@ app.get('/api/phone-auth/status/:sessionId', async (req: Request, res: Response)
  * 
  * The aggregator redirects to this URL with agg_code and session_key in the
  * URL fragment. This page extracts them, writes a localStorage signal for the
- * original tab, and POSTs to /api/phone-auth/complete (the browser auto-attaches
+ * original tab, and POSTs to /api/magical-auth/complete (the browser auto-attaches
  * the _glide_bind HttpOnly cookie).
  */
 app.get('/glide-complete', (_req: Request, res: Response) => {
   try {
-    const html = getCompletionPageHtml('/api/phone-auth/complete');
+    const html = getCompletionPageHtml('/api/magical-auth/complete');
     res.setHeader('Content-Type', 'text/html');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -370,14 +311,14 @@ app.get('/glide-complete', (_req: Request, res: Response) => {
  * agg_code and session_key from the POST body, and forwards all three to the
  * aggregator's /complete endpoint. Returns 204 on success.
  */
-app.post('/api/phone-auth/complete', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/magical-auth/complete', async (req: Request, res: Response): Promise<void> => {
   const { session_key, agg_code } = req.body;
 
   if (!session_key || !agg_code) {
     res.status(400).json({
-      error: ErrorCode.MISSING_REQUIRED_FIELD,
+      error: ErrorCode.VALIDATION_ERROR,
       message: 'session_key and agg_code are required',
-      status: 400
+      status: 400,
     });
     return;
   }
@@ -389,9 +330,9 @@ app.post('/api/phone-auth/complete', async (req: Request, res: Response): Promis
   if (!feCode) {
     console.error('❌ Complete: device binding cookie missing or invalid');
     res.status(403).json({
-      error: 'MISSING_BINDING_COOKIE',
+      error: ErrorCode.MISSING_BINDING_COOKIE,
       message: 'Device binding cookie is missing. The prepare and complete must happen in the same browser.',
-      status: 403
+      status: 403,
     });
     return;
   }
@@ -399,7 +340,7 @@ app.post('/api/phone-auth/complete', async (req: Request, res: Response): Promis
   try {
     console.log('🔐 Complete request for session:', session_key.substring(0, 8) + '...');
 
-    await glide.magicalAuth.complete({
+    await magicalAuth.complete({
       session_key,
       fe_code: feCode,
       agg_code,
@@ -413,21 +354,7 @@ app.post('/api/phone-auth/complete', async (req: Request, res: Response): Promis
     res.status(204).send();
   } catch (error) {
     console.error('❌ Complete error:', error);
-
-    if (error instanceof MagicalAuthError) {
-      res.status(error.status || 500).json({
-        error: error.code,
-        message: error.message,
-        status: error.status
-      });
-      return;
-    }
-
-    res.status(500).json({
-      error: ErrorCode.INTERNAL_SERVER_ERROR,
-      message: error instanceof Error ? error.message : 'An unexpected error occurred',
-      status: 500,
-    });
+    handleSdkError(res, error);
   }
 });
 
@@ -443,13 +370,14 @@ app.listen(PORT, () => {
   } else {
     console.log('⚠️  Missing OAuth2 credentials. Set GLIDE_CLIENT_ID and GLIDE_CLIENT_SECRET');
   }
+
+  console.log(`📦 SDK: @glideidentity/glide-be-node-magical-auth (MagicalAuthClient)`);
   
   console.log('\nAvailable endpoints:');
   console.log('  GET  /api/health');
-  console.log('  POST /api/phone-auth/prepare');
-  console.log('  POST /api/phone-auth/invoke');
-  console.log('  POST /api/phone-auth/process');
-  console.log('  GET  /api/phone-auth/status/:sessionId');
-  console.log('  GET  /glide-complete                    (device binding redirect page)');
-  console.log('  POST /api/phone-auth/complete           (device binding completion)\n');
+  console.log('  POST /api/magical-auth/prepare');
+  console.log('  POST /api/magical-auth/report-invocation');
+  console.log('  POST /api/magical-auth/process');
+  console.log('  GET  /glide-complete                        (device binding redirect page)');
+  console.log('  POST /api/magical-auth/complete             (device binding completion)\n');
 });
