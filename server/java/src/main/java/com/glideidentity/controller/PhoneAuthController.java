@@ -2,11 +2,9 @@ package com.glideidentity.controller;
 
 import com.glideidentity.dto.*;
 import com.glideidentity.service.GlideService;
-import com.glideidentity.service.SessionStoreService;
-import com.glideidentity.exception.MagicalAuthError;
-import com.glideidentity.core.Constants;
-import com.glideidentity.core.Types.PrepareResponse;
-import com.glideidentity.service.MagicalAuth;
+import com.glideidentity.magicalauth.exceptions.MagicalAuthException;
+import com.glideidentity.magicalauth.DeviceBinding;
+import com.glideidentity.magicalauth.models.PrepareResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -19,7 +17,6 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 
 @Slf4j
 @RestController
@@ -27,16 +24,14 @@ import java.util.Optional;
 public class PhoneAuthController {
 
     private final GlideService glideService;
-    private final SessionStoreService sessionStore;
     
-    public PhoneAuthController(GlideService glideService, SessionStoreService sessionStore) {
+    public PhoneAuthController(GlideService glideService) {
         this.glideService = glideService;
-        this.sessionStore = sessionStore;
     }
     
     /** Build a Set-Cookie header using Spring's ResponseCookie (framework-native, CRLF-safe). */
     private static String buildBindingCookie(String sessionKey, String value, boolean secure, Duration maxAge) {
-        String cookieName = MagicalAuth.getBindingCookieName(sessionKey);
+        String cookieName = DeviceBinding.getBindingCookieName(sessionKey);
         return ResponseCookie.from(cookieName, value)
                 .httpOnly(true)
                 .sameSite("Lax")
@@ -47,23 +42,16 @@ public class PhoneAuthController {
                 .toString();
     }
 
-    @PostMapping("/phone-auth/prepare")
+    @PostMapping("/magical-auth/prepare")
     public ResponseEntity<?> prepare(@RequestBody PrepareRequest request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         log.info("📱 Prepare request: { use_case: '{}' }", request.getUseCase());
 
         try {
-            PrepareResponse response = glideService.prepare(request);
+            PrepareResult response = glideService.prepare(request);
             log.info("✅ Prepare success: { strategy: '{}', session_key: '{}' }",
                 response.getAuthenticationStrategy(), 
                 response.getSession() != null ? response.getSession().getSessionKey() : "null");
             
-            // Store status_url for the polling proxy endpoint
-            sessionStore.extractStatusUrl(response).ifPresent(statusUrl -> {
-                if (response.getSession() != null) {
-                    sessionStore.storeStatusUrl(response.getSession().getSessionKey(), statusUrl);
-                }
-            });
-
             // Device binding: set HttpOnly cookie with fe_code for link strategy.
             // Each session gets its own cookie (_glide_bind_{sessionKey}), so parallel
             // sessions and retries don't interfere. Old cookies expire via Max-Age.
@@ -73,24 +61,22 @@ public class PhoneAuthController {
                 String sessionKey = response.getSession().getSessionKey();
                 httpResponse.addHeader(HttpHeaders.SET_COOKIE,
                         buildBindingCookie(sessionKey, response.getFeCode().toLowerCase(), isSecure,
-                                Duration.ofSeconds(Constants.BINDING_COOKIE_MAX_AGE)));
+                                Duration.ofSeconds(DeviceBinding.BINDING_COOKIE_MAX_AGE)));
                 log.info("🔒 Device binding cookie set for link strategy");
 
-                // feCode must never be sent to the client in the body
-                response.setFeCode(null);
             }
             
-            return ResponseEntity.ok(response);
-        } catch (MagicalAuthError e) {
-            // Handle SDK errors properly (no reflection needed)
-            log.error("❌ MagicalAuthError: code={}, status={}, message={}", 
+            // Return the inner PrepareResponse (flat: authentication_strategy, session, data)
+            // PrepareResult is a wrapper that holds feCode — we don't send that to the client.
+            return ResponseEntity.ok(response.getResponse());
+        } catch (MagicalAuthException e) {
+            log.error("❌ MagicalAuthException: code={}, status={}, message={}", 
                     e.getCode(), e.getStatus(), e.getMessage());
             
             var errorResponse = MagicAuthErrorResponse.builder()
                     .error(e.getCode())
                     .message(e.getMessage())
                     .requestId(e.getRequestId())
-                    .details(e.getDetails())
                     .build();
             
             return ResponseEntity.status(e.getStatus()).body(errorResponse);
@@ -115,7 +101,7 @@ public class PhoneAuthController {
         }
     }
 
-    @PostMapping("/phone-auth/process")
+    @PostMapping("/magical-auth/process")
     public ResponseEntity<?> process(@RequestBody PhoneAuthProcessRequest request, HttpServletRequest httpRequest) {
         log.info("🔐 Process request: { use_case: '{}' }", request.getUseCase());
         
@@ -126,7 +112,7 @@ public class PhoneAuthController {
             String feCode = null;
             String cookieHeader = httpRequest.getHeader("Cookie");
             if (cookieHeader != null && sessionKey != null) {
-                feCode = MagicalAuth.parseBindingCookie(cookieHeader, sessionKey);
+                feCode = DeviceBinding.parseBindingCookie(cookieHeader, sessionKey);
             }
             if (feCode != null) {
                 log.info("🔒 Device binding cookie found for process step");
@@ -139,16 +125,14 @@ public class PhoneAuthController {
             // is optional. Developers can clear it here for immediate cleanup if desired.
 
             return ResponseEntity.ok(result);
-        } catch (MagicalAuthError e) {
-            // Handle SDK errors properly (no reflection needed)
-            log.error("❌ MagicalAuthError: code={}, status={}, message={}", 
+        } catch (MagicalAuthException e) {
+            log.error("❌ MagicalAuthException: code={}, status={}, message={}", 
                     e.getCode(), e.getStatus(), e.getMessage());
             
             var errorResponse = MagicAuthErrorResponse.builder()
                     .error(e.getCode())
                     .message(e.getMessage())
                     .requestId(e.getRequestId())
-                    .details(e.getDetails())
                     .build();
             
             return ResponseEntity.status(e.getStatus()).body(errorResponse);
@@ -177,7 +161,7 @@ public class PhoneAuthController {
      * Reports that an authentication flow was started.
      * This call can be made asynchronously without blocking the flow.
      */
-    @PostMapping("/phone-auth/invoke")
+    @PostMapping("/magical-auth/report-invocation")
     public ResponseEntity<?> invoke(@RequestBody Map<String, String> request) {
         // Frontend SDK sends session_id (not session_key)
         String sessionId = request.get("session_id");
@@ -210,7 +194,7 @@ public class PhoneAuthController {
      * Reads fe_code from the HttpOnly cookie, agg_code from the body, and
      * forwards all three to the aggregator's /complete endpoint.
      */
-    @PostMapping("/phone-auth/complete")
+    @PostMapping("/magical-auth/complete")
     public ResponseEntity<?> complete(@RequestBody Map<String, String> body, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         String sessionKey = body.get("session_key");
         String aggCode = body.get("agg_code");
@@ -225,7 +209,7 @@ public class PhoneAuthController {
         String feCode = null;
         String cookieHeader = httpRequest.getHeader("Cookie");
         if (cookieHeader != null) {
-            feCode = MagicalAuth.parseBindingCookie(cookieHeader, sessionKey);
+            feCode = DeviceBinding.parseBindingCookie(cookieHeader, sessionKey);
         }
 
         if (feCode == null) {
@@ -249,8 +233,8 @@ public class PhoneAuthController {
 
             return ResponseEntity.noContent().build();
 
-        } catch (MagicalAuthError e) {
-            log.error("❌ Complete MagicalAuthError: code={}, status={}, message={}", e.getCode(), e.getStatus(), e.getMessage());
+        } catch (MagicalAuthException e) {
+            log.error("❌ Complete MagicalAuthException: code={}, status={}, message={}", e.getCode(), e.getStatus(), e.getMessage());
             return ResponseEntity.status(e.getStatus()).body(Map.of(
                     "error", e.getCode(),
                     "message", e.getMessage()));
@@ -259,34 +243,6 @@ public class PhoneAuthController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                     "error", "INTERNAL_ERROR",
                     "message", "An unexpected error occurred"));
-        }
-    }
-
-    // ==================== Device Binding: Completion Redirect Page ====================
-
-    /**
-     * Completion redirect page — served after carrier authentication.
-     *
-     * The aggregator redirects to this URL with agg_code and session_key in the
-     * URL fragment. This page extracts them, writes a localStorage signal for the
-     * original tab, and POSTs to /api/phone-auth/complete (the browser auto-attaches
-     * the _glide_bind HttpOnly cookie).
-     */
-    @GetMapping("/glide-complete")
-    public ResponseEntity<String> glideComplete() {
-        try {
-            String html = MagicalAuth.getCompletionPageHtml("/api/phone-auth/complete");
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_TYPE, "text/html; charset=UTF-8")
-                    .header("X-Content-Type-Options", "nosniff")
-                    .header("X-Frame-Options", "DENY")
-                    .header("Referrer-Policy", "no-referrer")
-                    .body(html);
-        } catch (Exception e) {
-            log.error("❌ Failed to generate completion page:", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .header(HttpHeaders.CONTENT_TYPE, "text/html; charset=UTF-8")
-                    .body("Internal server error");
         }
     }
 
@@ -309,62 +265,4 @@ public class PhoneAuthController {
         return System.getProperty("spring.profiles.active", "production");
     }
     
-    /**
-     * Status Proxy Endpoint for Desktop/QR Authentication Polling
-     * 
-     * Uses the stored status_url from the prepare response for polling.
-     * This ensures we use the exact URL provided by the API.
-     */
-    @GetMapping("/phone-auth/status/{sessionId}")
-    public ResponseEntity<?> getStatus(@PathVariable String sessionId) {
-        // Get the stored status URL from prepare response
-        Optional<String> statusUrlOpt = sessionStore.getStatusUrl(sessionId);
-        
-        if (statusUrlOpt.isEmpty()) {
-            String sessionPreview = sessionId.length() > 8 
-                ? sessionId.substring(0, 8) + "..." 
-                : sessionId;
-            log.warn("[Status Proxy] No stored status URL for session: {}", sessionPreview);
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "error", "SESSION_NOT_FOUND",
-                "message", "Session not found. It may have expired or prepare was not called."
-            ));
-        }
-
-        String sessionPreview = sessionId.length() > 8 
-            ? sessionId.substring(0, 8) + "..." 
-            : sessionId;
-        log.info("[Status Proxy] Polling session: {}", sessionPreview);
-
-        try {
-            java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
-            
-            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create(statusUrlOpt.get()))
-                .header("Accept", "application/json")
-                .GET()
-                .build();
-            
-            java.net.http.HttpResponse<String> response = httpClient.send(request, 
-                java.net.http.HttpResponse.BodyHandlers.ofString());
-            
-            log.info("[Status Proxy] Status check returned {}", response.statusCode());
-            
-            if (response.statusCode() >= 400) {
-                return ResponseEntity.status(response.statusCode()).body(response.body());
-            }
-            
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            Object jsonResponse = mapper.readValue(response.body(), Object.class);
-            
-            return ResponseEntity.ok(jsonResponse);
-            
-        } catch (Exception e) {
-            log.error("[Status Proxy] Error:", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "error", "STATUS_CHECK_FAILED",
-                "message", e.getMessage()
-            ));
-        }
-    }
 }

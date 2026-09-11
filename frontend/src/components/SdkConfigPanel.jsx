@@ -34,31 +34,6 @@ const SdkConfigPanel = ({
         </div>
         
         <div className="config-body">
-          {/* Core Options */}
-          <div className="config-section">
-            <h3>Core Options</h3>
-            
-            <div className="config-field">
-              <label>Polling Interval (ms)</label>
-              <p className="config-hint">How often to check authentication status. Lower = faster updates, higher = less network traffic.</p>
-              <input 
-                type="number" 
-                value={config.pollingInterval}
-                onChange={(e) => handleChange('pollingInterval', parseInt(e.target.value) || 2000)}
-              />
-            </div>
-            
-            <div className="config-field">
-              <label>Max Polling Attempts</label>
-              <p className="config-hint">Maximum retries before timeout. With 2s interval: 30 attempts = 1 minute timeout.</p>
-              <input 
-                type="number" 
-                value={config.maxPollingAttempts}
-                onChange={(e) => handleChange('maxPollingAttempts', parseInt(e.target.value) || 30)}
-              />
-            </div>
-          </div>
-          
           {/* Modal Options */}
           <div className="config-section">
             <h3>Modal Options</h3>

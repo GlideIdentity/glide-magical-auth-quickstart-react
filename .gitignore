@@ -24,8 +24,6 @@ bin/
 # Go binaries and build outputs (compiled binaries only, not source)
 /server-go
 server-*
+server/go/magical-auth-quickstart-go
 *.exe
 vendor/
-
-# Internal QA test environment (not for public repo)
-test-external-developer/

@@ -1,6 +1,6 @@
 package com.glideidentity.controller;
 
-import com.glideidentity.service.MagicalAuth;
+import com.glideidentity.magicalauth.DeviceBinding;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -20,7 +20,7 @@ public class CompletionPageController {
     @GetMapping(value = "/glide-complete", produces = MediaType.TEXT_HTML_VALUE)
     public ResponseEntity<String> completionPage() {
         try {
-            String html = MagicalAuth.getCompletionPageHtml("/api/phone-auth/complete");
+            String html = DeviceBinding.getCompletionPageHtml("/api/magical-auth/complete");
             return ResponseEntity.ok()
                     .header("X-Content-Type-Options", "nosniff")
                     .header("X-Frame-Options", "DENY")

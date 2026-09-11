@@ -27,24 +27,16 @@ configurations {
 }
 
 repositories {
+    mavenLocal()
     mavenCentral()
-    // Bundled SDK JARs — used in Docker builds and CI where the SDK
-    // isn't yet published to Maven Central or available in mavenLocal.
-    flatDir {
-        dirs 'libs'
-    }
 }
 
 dependencies {
     // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'
     
-    // Glide SDK - OAuth2 authentication with device binding support
-    implementation 'com.glideidentity:glide-be-sdk-java:5.1.1'
-    // Core types module (explicit for flatDir builds where transitive deps aren't resolved)
-    implementation 'com.glideidentity:glide-be-sdk-java-core:5.1.1'
-    // SDK transitive dependency (explicit for flatDir builds)
-    implementation 'io.github.cdimascio:java-dotenv:5.2.2'
+    // Glide Backend SDK - phone number authentication with device binding
+    implementation 'com.glideidentity:glide-be-java-magical-auth:1.0.0'
     
     // JSON processing
     implementation 'com.fasterxml.jackson.core:jackson-databind'

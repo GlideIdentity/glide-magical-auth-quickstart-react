@@ -5,13 +5,8 @@ import ResultOverlay from './components/ResultOverlay';
 import glideLogo from './assets/Glide-Logomark.svg';
 import './App.css';
 
-// API base URL — empty in local dev (uses Vite proxy), set to backend URL when deployed
-const API_BASE = import.meta.env.VITE_API_URL || '';
-
 // Default SDK configuration values
 const defaultSdkConfig = {
-  pollingInterval: 2000,
-  maxPollingAttempts: 30,
   modalTheme: 'auto',
   viewMode: 'toggle',
   title: '',
@@ -71,37 +66,27 @@ function App() {
     reset: resetHook,
     isSupported
   } = usePhoneAuth({
-    endpoints: {
-      prepare: `${API_BASE}/api/phone-auth/prepare`,
-      reportInvocation: `${API_BASE}/api/phone-auth/invoke`,
-      process: `${API_BASE}/api/phone-auth/process`,
-      /**
-       * Polling Endpoint Configuration
-       * 
-       * This endpoint is used for desktop/QR authentication to poll for
-       * completion status while the user authenticates on their mobile device.
-       * 
-       * OPTIONS:
-       * 1. USE PROXY (current): '/api/phone-auth/status'
-       *    - Routes through your backend server
-       *    - Better for debugging (see requests in server logs)
-       *    - Avoids CORS issues
-       * 
-       * 2. DIRECT CALLS: Comment out or remove this line
-       *    - SDK will use status_url from prepare response OR
-       *    - Fall back to: https://api.glideidentity.app/public/status/
-       *    - May have CORS issues in some environments
-       */
-      polling: `${API_BASE}/api/phone-auth/status`,
-    },
     debug: sdkConfig.debugMode,
+    // The SDK uses these default endpoints. Override with relative paths
+    // or full URLs to match your server setup.
+    //
+    // endpoints: {
+    //   prepare: '/api/magical-auth/prepare',
+    //   reportInvocation: '/api/magical-auth/report-invocation',
+    //   process: '/api/magical-auth/process',
+    // },
+    //
+    // Mobile DevTools Console — uncomment to enable an on-screen console
+    // for mobile testing where browser DevTools are not accessible.
+    //
+    // devtools: {
+    //   showMobileConsole: true,
+    // },
   });
   
   // Get SDK invoke options based on config
   const getSdkInvokeOptions = () => {
     return {
-      pollingInterval: sdkConfig.pollingInterval,
-      maxPollingAttempts: sdkConfig.maxPollingAttempts,
       modalOptions: {
         theme: sdkConfig.modalTheme,
         viewMode: sdkConfig.viewMode,
